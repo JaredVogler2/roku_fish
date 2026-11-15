@@ -165,7 +165,7 @@ sub AppTestHook(w as object)
         if w.tick MOD 30 = 0 and w.player <> invalid then
             p = w.player
             cam = m.cam
-            print "trace t="; Int(w.time); " p=("; Int(p.x * 10) / 10; ","; Int(p.y * 10) / 10; ") sec="; p.sector; " cam=("; Int(cam.x * 10) / 10; ","; Int(cam.y * 10) / 10; ") scr=("; p.scrX; ","; p.scrY; ") hp="; Int(p.health); " en="; Int(p.energy); " score="; w.ps.score; " fps="; Int(m.game.fps)
+            print "trace t="; Int(w.time); " reg="; w.rr.id; " p=("; Int(p.x * 10) / 10; ","; Int(p.y * 10) / 10; ") sec="; p.sector; " cam=("; Int(cam.x * 10) / 10; ","; Int(cam.y * 10) / 10; ") scr=("; p.scrX; ","; p.scrY; ") hp="; Int(p.health); " en="; Int(p.energy); " score="; w.ps.score; " fps="; Int(m.game.fps)
         end if
     end if
     if t = invalid or w.time < 3 then return
