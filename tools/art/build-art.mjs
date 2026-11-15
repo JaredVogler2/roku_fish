@@ -1,7 +1,7 @@
 /**
  * Builds every sprite and packs them into the atlases the Roku channel loads.
  *
- *   node tools/art/build-art.mjs [--only=fish,critters] [--quality=82] [--png]
+ *   node tools/art/build-art.mjs [--only=fish,critters] [--skip=predators] [--quality=82] [--png]
  *
  * Inputs : the generator modules listed in MODULES (each exports IDS and build(id) -> SpriteDef).
  * Outputs: channel/assets/<atlas>.webp   packed sprite sheets (lossy WebP, lossless alpha)
@@ -32,7 +32,9 @@ const flag = (n, d) => {
 };
 
 /** group: which atlas family a module's sprites go to (kept apart so regions can be loaded separately later). */
+/** Listed in priority order: when two modules provide the same id, the first one wins. */
 const MODULES = [
+  { name: 'predators', file: 'predators.mjs', group: 'creatures' },
   { name: 'fish', file: 'fish.mjs', group: 'creatures' },
   { name: 'critters', file: 'critters.mjs', group: 'creatures' },
   { name: 'flora', file: 'flora.mjs', group: 'kit' },
@@ -46,6 +48,7 @@ const GUTTER = 4;
 const KIND = { tail: 1, wave: 2, flap: 3, sway: 4, pulse: 5, bob: 6 };
 
 const only = flag('only', null);
+const skip = String(flag('skip', '')).split(',');
 const quality = Number(flag('quality', 82));
 const usePng = !!flag('png', false);
 
@@ -142,13 +145,15 @@ async function main() {
   let cached = 0;
   for (const mod of MODULES) {
     if (only && !String(only).split(',').includes(mod.name)) continue;
+    if (skip.includes(mod.name)) continue;
     const file = path.join(HERE, mod.file);
     if (!fs.existsSync(file)) {
       console.log(`- ${mod.name}: (module not present yet, skipped)`);
       continue;
     }
     const m = await import(file);
-    const ids = m.IDS;
+    // (the hand-made predators replace the generic fish generator's versions of the same species)
+    const ids = m.IDS.filter((id) => !sprites[id]);
     for (const id of ids) {
       const key = cacheKey(mod.file, id);
       const cf = path.join(CACHE, `${mod.name}-${id.replace(/[^a-zA-Z0-9_]/g, '_')}-${key}.spr`);

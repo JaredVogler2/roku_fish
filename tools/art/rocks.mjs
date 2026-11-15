@@ -268,93 +268,117 @@ function sandTop() {
   }, { pad: 16, aoR: 6, aoK: 0.11, shadow: 16, shadowK: 0.6, key: 1.1, ambient: 0.8 }), [0, 26]);
 }
 // ---------------------------------------------------------------------------- wreck timber
-function timberShade(x, y, w, h, alongX, seed) {
-  // planks run along the long axis; boards have seams, grain, knots and a little growth
-  const a = alongX ? x : y;
-  const b = alongX ? y : x;
+/**
+ * Old ship's timber: boards with rounded faces and dark seams, butt joints, grain, worm holes
+ * and a little pale growth. Writes height and albedo for the relief renderer.
+ * a runs along the boards, b across them.
+ */
+const TIMBER_OPTS = { pad: 14, aoR: 4, aoK: 0.13, shadow: 12, shadowK: 0.6, key: 1.18, ambient: 0.66, dust: 0.06 };
+function timberSample(o, d, a, b, seed, edgeR = 5) {
   const boardW = 22;
   const bi = Math.floor(b / boardW);
   const bf = b / boardW - bi;
-  const seam = smoothstep(0.0, 0.1, Math.min(bf, 1 - bf));
+  const across = Math.min(bf, 1 - bf); // 0 at a seam .. 0.5 mid-board
   const shift = hash2(bi, 3, seed) * 300;
-  const grain = fbm((a + shift) / 90, b / 5 + bi * 3.1, 3, seed + bi);
-  const butt = smoothstep(0, 3, Math.abs(((a + shift) % 170) - 85) - 82);
-  let v = 0.7 + (grain - 0.5) * 0.3 + (hash2(bi, 9, seed) - 0.5) * 0.14;
-  v *= 0.62 + 0.38 * seam;
-  v *= 1 - 0.3 * butt;
-  const crust = smoothstep(0.62, 0.8, fbm(x / 40, y / 40, 3, seed + 40));
-  v = lerp(v, 0.9, crust * 0.3);
-  return clamp(v * (0.75 + 0.3 * clamp(1 - bf * 0.8)));
+  const al = a + shift;
+  const grain = fbm(al / 90, b / 5 + bi * 3.1, 3, seed + bi);
+  const fine = vnoise(al / 3.2, b * 1.7, seed + 5);
+  const buttD = Math.abs((((al % 170) + 170) % 170) - 85) - 82; // > 0 inside a butt joint
+  const butt = smoothstep(0, 2.5, buttD);
+  const wear = fbm(al / 60, b / 30, 2, seed + 9);
+  const pw = worley(al / 13, b / 13, seed + 17);
+  const hole = pw.id > 0.9 ? smoothstep(0.26, 0.08, pw.f1) : 0;
+  const dd = Math.max(0, d);
+  const t = Math.min(1, dd / edgeR);
+  o.d = d;
+  // each board is slightly cupped; seams and butt joints are grooves
+  o.h = edgeR * Math.sqrt(1 - (1 - t) * (1 - t)) + 4.2 * Math.sqrt(Math.min(1, across / 0.16)) * (1 - butt * 0.9)
+    + (grain - 0.5) * 2.2 + (fine - 0.5) * 0.8 + (wear - 0.5) * 2.4 - hole * 3.5 + (hash2(bi, 21, seed) - 0.5) * 2.5;
+  let v = 0.74 + (grain - 0.5) * 0.3 + (hash2(bi, 9, seed) - 0.5) * 0.16 + (fine - 0.5) * 0.08;
+  v *= 1 - 0.25 * butt;
+  v *= 1 - hole * 0.45;
+  const crust = smoothstep(0.6, 0.8, fbm(al / 46, b / 46, 3, seed + 40));
+  o.a = clamp(lerp(v, 0.95, crust * 0.35));
+  o.t = 0.05 - crust * 0.07;
+  o.g = 0.04;
+  o.al = 1;
+  return true;
 }
 function plankH(part, len, th, seed) {
   const w = len + (part === 'm' ? 0 : 10);
   const h = th + 12;
-  return piece(w, h, (x, y, o) => {
+  return wrap(reliefRender(w, h, (x, y, o) => {
     const u = part === 'l' ? x - 10 : part === 'r' ? len - x : 1e6;
     const jag = (hash2(Math.floor(y / 11), 1, seed) - 0.5) * 16;
     const v = y - 6;
     const vb = th + 6 - y;
     const d = Math.min(v, vb, part === 'm' ? 1e6 : u + jag);
-    if (d <= -1) return false;
-    const t = timberShade(part === 'r' ? w - x : x, y, w, h, true, seed);
-    const lightTop = 1 + 0.25 * smoothstep(8, 0, v) - 0.3 * smoothstep(th * 0.5, th, v);
-    o[0] = t * lightTop;
-    o[1] = t * lightTop * 0.96;
-    o[2] = t * lightTop * 0.9;
-    o[3] = smoothstep(-1, 1, d);
-    return true;
-  }, [part === 'l' ? 10 : 0, 6], { nominal: th / PPU });
+    if (d <= -2) return false;
+    return timberSample(o, d, part === 'r' ? w - x : x, y, seed);
+  }, TIMBER_OPTS), [part === 'l' ? 10 : 0, 6], { nominal: th / PPU });
 }
 function plankV(part, len, wd, seed) {
   const w = wd + 12;
   const h = len + (part === 'm' ? 0 : 10);
-  return piece(w, h, (x, y, o) => {
+  return wrap(reliefRender(w, h, (x, y, o) => {
     const v = part === 't' ? y - 10 : part === 'b' ? len - y : 1e6;
     const jag = (hash2(Math.floor(x / 11), 2, seed) - 0.5) * 14;
     const u = x - 6;
     const ub = wd + 6 - x;
     const d = Math.min(u, ub, part === 'm' ? 1e6 : v + jag);
-    if (d <= -1) return false;
-    const t = timberShade(x, part === 'b' ? h - y : y, w, h, false, seed);
-    const side = 1 + 0.16 * smoothstep(8, 0, u) - 0.18 * smoothstep(wd * 0.5, wd, u);
-    o[0] = t * side;
-    o[1] = t * side * 0.96;
-    o[2] = t * side * 0.9;
-    o[3] = smoothstep(-1, 1, d);
-    return true;
-  }, [6, part === 't' ? 10 : 0], { nominal: wd / PPU });
+    if (d <= -2) return false;
+    return timberSample(o, d, part === 'b' ? h - y : y, x, seed);
+  }, TIMBER_OPTS), [6, part === 't' ? 10 : 0], { nominal: wd / PPU });
 }
 function crate() {
   const S = 160;
-  return piece(S, S, (x, y, o) => {
+  return wrap(reliefRender(S, S, (x, y, o) => {
     const d = Math.min(x - 4, y - 4, S - 4 - x, S - 4 - y);
-    if (d <= -1) return false;
-    const frame = Math.min(x - 4, y - 4, S - 4 - x, S - 4 - y) < 20;
-    const diag = Math.abs(x - y) < 11 || Math.abs(x + y - S) < 11;
-    let v = timberShade(x, y, S, S, !frame, 51) * (frame || diag ? 1.0 : 0.78);
-    if (frame) v = timberShade(y, x, S, S, x < 24 || x > S - 24 ? false : true, 52) * 1.02;
-    const lightTop = 1 + 0.22 * smoothstep(14, 0, y - 4) - 0.25 * smoothstep(S * 0.5, S, y);
-    v *= lightTop;
-    o[0] = v;
-    o[1] = v * 0.96;
-    o[2] = v * 0.9;
-    o[3] = smoothstep(-1, 1, d);
+    if (d <= -2) return false;
+    const inFrame = d < 22;
+    const diagD = Math.min(Math.abs(x - y), Math.abs(x + y - S)) / Math.SQRT2;
+    const onBrace = diagD < 9 && !inFrame;
+    // frame boards run around the edge, panel boards run upright, braces cross the panel
+    const vertical = x < 26 || x > S - 26;
+    if (inFrame) timberSample(o, d, vertical ? y : x, vertical ? x : y, 52, 6);
+    else if (onBrace) timberSample(o, 9 - diagD, x + y, 11, 53, 4);
+    else timberSample(o, d, y, x, 51, 6);
+    o.d = d;
+    // the frame and braces stand proud of the panel
+    if (inFrame) o.h += 7;
+    else if (onBrace) o.h += 5;
+    else o.a *= 0.86;
     return true;
-  }, [S / 2, S / 2], { nominal: 152 / PPU });
+  }, TIMBER_OPTS), [S / 2, S / 2], { nominal: 152 / PPU });
 }
 function porthole() {
   const S = 96;
-  return piece(S, S, (x, y, o) => {
-    const d = Math.hypot(x - 48, y - 48);
-    if (d > 44) return false;
-    const rim = smoothstep(44, 41, d) * smoothstep(26, 30, d);
-    const v = rim * (0.75 + 0.25 * clamp(-(y - 48) / 44 + 0.3)) + (1 - rim) * 0.12;
-    o[0] = v;
-    o[1] = v * 0.97;
-    o[2] = v * 0.9;
-    o[3] = smoothstep(44, 42, d) * (rim > 0.05 ? 1 : 0.9);
+  return wrap(reliefRender(S, S, (x, y, o) => {
+    const r = Math.hypot(x - 48, y - 48);
+    const d = 44 - r;
+    if (d <= -2) return false;
+    const ring = smoothstep(14, 18, d); // 0 on the rim .. 1 in the glass
+    o.d = d;
+    // a rounded metal rim around dark glass, with four bolts
+    const rimT = clamp(d / 16);
+    let hgt = 7 * Math.sin(rimT * Math.PI) * (1 - ring) + 1;
+    let alb = 0.72;
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + 0.785;
+      const bd = Math.hypot(x - 48 - Math.cos(a) * 36, y - 48 - Math.sin(a) * 36);
+      if (bd < 4) hgt += Math.sqrt(16 - bd * bd) * 0.9;
+    }
+    if (ring > 0.5) {
+      alb = 0.13 + 0.1 * clamp(1 - Math.hypot(x - 40, y - 38) / 22);
+      hgt = 1;
+    }
+    o.h = hgt;
+    o.a = alb;
+    o.t = 0.02;
+    o.g = ring > 0.5 ? 0.5 : 0.25;
+    o.al = 1;
     return true;
-  }, [48, 48]);
+  }, { ...TIMBER_OPTS, shadow: 6 }), [48, 48]);
 }
 
 const BUILD = {
