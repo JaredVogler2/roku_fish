@@ -18,6 +18,7 @@ sub RenderInit()
         prevBiome: "sunlitGardens"
         biomeMix: 1.0
         dmgFlash: 0.0
+        bubT: 0.0
     }
     r = RngNew(4242)
     for i = 0 to 33
@@ -274,6 +275,14 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
         end for
     end if
 
+    ' now and then a few bubbles rise from somewhere below the view
+    if not paused then
+        rw.bubT = rw.bubT + dt
+        if rw.bubT > 0.7 then
+            rw.bubT = 0.0
+            if not m.lowFx then RenderBubbles(WrapX(camX + (Rnd(0) - 0.5) * hw * 1.8), camY - hh * (0.2 + Rnd(0) * 0.7), 1 + Rnd(2), 0.25)
+        end if
+    end if
     RenderParticles(w, dt, camX, camY, ppu, cx, cy, hw, hh, t, paused, light)
     RenderRings(w, ppu, t)
     RenderScreenFx(w, dt)

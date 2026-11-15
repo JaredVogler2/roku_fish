@@ -223,8 +223,8 @@ const BUILD = {
   })),
 
   // ---- distant reef silhouettes (tile horizontally; solid below the skyline)
-  bg_ridge_far: () => ridge(1024, 256, 3, 0.55),
-  bg_ridge_near: () => ridge(1024, 300, 9, 0.8),
+  bg_ridge_far: () => ridge(1024, 256, 3, 0.55, 7, 0.7),
+  bg_ridge_near: () => ridge(1024, 300, 9, 0.8, 9, 1.15),
 };
 
 function caustic(seed) {
@@ -245,7 +245,12 @@ function caustic(seed) {
   }), [0, 0]);
 }
 
-function ridge(w, h, seed, rough) {
+/**
+ * A distant reef skyline that tiles horizontally: a rolling ridge with coral heads on it - table
+ * corals, branching colonies and sea fans in silhouette - lit along its upper edges.
+ * feat = how many coral shapes, fs = their scale.
+ */
+function ridge(w, h, seed, rough, feat = 8, fs = 1) {
   const sky = (x) => {
     const u = x / w;
     let y = 0;
@@ -253,9 +258,9 @@ function ridge(w, h, seed, rough) {
     y += Math.sin(u * TAU * 2 + seed * 2.3) * 0.11;
     y += Math.sin(u * TAU * 5 + seed * 0.7) * 0.05 * rough;
     y += (fbm(u * 12, seed, 4, seed, 12) - 0.5) * 0.3 * rough;
-    return h * (0.42 - y * 0.75);
+    return h * (0.5 - y * 0.62);
   };
-  // coral-like bumps along the skyline
+  // rounded coral heads along the skyline
   const bump = (x) => {
     let b = 0;
     for (let k = 0; k < 26; k++) {
@@ -267,9 +272,65 @@ function ridge(w, h, seed, rough) {
     }
     return b;
   };
+  const feats = [];
+  for (let k = 0; k < feat; k++) {
+    const cx = ((k + 0.2 + hash2(k, 11, seed) * 0.6) / feat) * w;
+    const sc = fs * (0.75 + hash2(k, 12, seed) * 0.6);
+    const kind = Math.floor(hash2(k, 13, seed) * 3);
+    const f = { cx, by: sky(cx) - bump(cx) + 6, sc, kind, fingers: [] };
+    if (kind === 1) {
+      const n = 5 + Math.floor(hash2(k, 14, seed) * 3);
+      for (let i = 0; i < n; i++) {
+        const th = ((i + 0.5) / n - 0.5) * 1.9 + (hash2(k * 9 + i, 15, seed) - 0.5) * 0.25;
+        f.fingers.push([Math.sin(th), -Math.cos(th), (22 + hash2(k * 9 + i, 16, seed) * 24) * sc]);
+      }
+    }
+    feats.push(f);
+  }
+  const segD = (px, py, ax, ay, bx, by) => {
+    const vx = bx - ax;
+    const vy = by - ay;
+    const t = clamp(((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1));
+    return Math.hypot(px - ax - vx * t, py - ay - vy * t);
+  };
+  /** Approximate distance inside any coral shape at (x, y) (negative outside). */
+  const featD = (x, y) => {
+    let best = -99;
+    for (const f of feats) {
+      let dx = x - f.cx;
+      if (dx > w / 2) dx -= w;
+      else if (dx < -w / 2) dx += w;
+      if (Math.abs(dx) > 60 * f.sc) continue;
+      const dy = y - f.by; // negative above the base
+      let d = -99;
+      if (f.kind === 0) {
+        // table coral: a short stalk under a wide, slightly dished plate
+        const H = 26 * f.sc;
+        const stalk = Math.min(5 * f.sc - Math.abs(dx), dy + H, -dy + 8);
+        const rx = 40 * f.sc;
+        const ry = 6.5 * f.sc;
+        const cy = dy + H + (dx * dx) / (rx * rx) * 5 * f.sc;
+        const plate = (1 - Math.hypot(dx / rx, cy / ry)) * ry;
+        d = Math.max(stalk, plate);
+      } else if (f.kind === 1) {
+        // branching colony: fingers fanning out from one base
+        for (const [sx, sy, L] of f.fingers) d = Math.max(d, 3.6 * f.sc - segD(dx, dy, 0, 4, sx * L, sy * L));
+      } else {
+        // sea fan: a rounded fan on a stem
+        const R = 34 * f.sc;
+        const cy = dy + 10 * f.sc;
+        const ang = Math.atan2(dx, -cy);
+        const fan = Math.min(R * (0.92 + 0.08 * Math.cos(ang * 9)) - Math.hypot(dx, cy), (1.25 - Math.abs(ang)) * 20);
+        const stem = Math.min(2.6 * f.sc - Math.abs(dx), dy + 12 * f.sc, -dy + 8);
+        d = Math.max(fan, stem);
+      }
+      if (d > best) best = d;
+    }
+    return best;
+  };
   const img = shade(w, h, 2, (x, y, o) => {
     const top = sky(x) - bump(x);
-    const d = y - top;
+    const d = Math.max(y - top, featD(x, y));
     if (d < -1) return false;
     // brighter rim along the skyline, darker toward the base: reads as lit from above
     // (the bottom row is a constant 0.4 so the device can continue the band with a plain rectangle)

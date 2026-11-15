@@ -106,6 +106,38 @@ sub RenderBackdrop(w as object, rr as object, biome as string, sector as integer
         end if
     end if
 
+    ' ---- far-off schools: small silhouettes drifting across the distance
+    fishIc = m.spr["ic_fish"]
+    if fishIc <> invalid and b <> invalid and not m.lowFx then
+        reg = fishIc.parts[0].r0
+        hz = b.haze
+        fcol = Rgba(Int(hz[0] * light[0] * 0.5), Int(hz[1] * light[1] * 0.56), Int(hz[2] * light[2] * 0.7), 170)
+        flip = m.caps.flip
+        ' a loose shoal, not a formation
+        offX = [-64, -41, -9, 20, 51, -25, 8, 33, 66]
+        offY = [-5, 11, -15, 3, -6, 23, -26, 17, 9]
+        for s = 0 to 2
+            dir = 1
+            if s = 1 then dir = -1
+            ' each school crosses the view every minute or so, a little slower than the play plane scrolls
+            span = 1900
+            sx = (s * 640 + dir * t * (16 + s * 5) - cam.x * ppu * 0.45) MOD span
+            if sx < 0 then sx = sx + span
+            sx = sx - 300
+            sy = 360 - Int(((2 - row) * 13.5 + 4.5 + s * 2.6 - cam.y) * ppu * 0.5)
+            if sy > topY + 30 and sy < 700 and sx > -200 and sx < 1480 then
+                kx = 0.2 + s * 0.03
+                fx = kx
+                if dir < 0 and flip then fx = -kx
+                for i = 0 to 8
+                    ox = offX[i] * (1 + s * 0.2)
+                    oy = offY[i] + Int(4 * Sin(t * 1.3 + i * 1.7 + s))
+                    scr.DrawScaledObject(Int(sx + ox), sy + oy, fx, kx, reg, fcol)
+                end for
+            end if
+        end for
+    end if
+
     ' ---- light shafts: slow, soft, strongest near the surface in daylight
     shaft = m.spr["fx_shaft"]
     if shaft <> invalid and not m.lowFx then

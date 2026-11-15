@@ -142,7 +142,7 @@ sub GuideDraw()
             y = 270
             y = DrawWrapped(sp.summary, 768, y, 448, ui.text, "tiny", 4) + 8
             scr.DrawText("EATS", 768, y, ui.aqua, m.fonts.tiny)
-            y = DrawWrapped(UiDietNames(sp), 840, y, 376, ui.dim, "tiny", 2) + 4
+            y = DrawWrapped(UiDietNames(sp), 840, y, 376, ui.dim, "tiny", 3) + 4
             scr.DrawText("EATEN BY", 768, y, ui.coral, m.fonts.tiny)
             y = DrawWrapped(GuideNames(sp.predators, gd.known, 4), 870, y, 346, ui.dim, "tiny", 2) + 4
             ab = UiAbilityNames(sp)
@@ -156,7 +156,7 @@ sub GuideDraw()
             w = m.game.w
             if w <> invalid and m.app.screen = "game" then
                 p = w.player
-                if p <> invalid and sp.idx <> invalid and p.sp.idx < m.speciesBase then
+                if p <> invalid and sp.idx <> invalid and p.sp.idx < m.speciesBase and sp.id <> p.sp.id then
                     n = m.species.Count()
                     md = m.eatMode[p.sp.idx * n + sp.idx]
                     t = "Your " + p.sp.name + " cannot eat it."
