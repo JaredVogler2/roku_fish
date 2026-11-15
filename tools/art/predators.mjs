@@ -648,13 +648,14 @@ function maze(x, y, seed, width = 0.22) {
  *   ampPed  wave amplitude at the tail joint, as a fraction of the body length
  *   lagPed  phase lag at the tail joint (radians); the lag grows linearly along the wave zone
  *   pow     exponent of the amplitude envelope (as in fish.mjs: amp ~ ((u - uStart) / span) ^ pow)
+ *   feather width of the cross-fade between neighbouring parts, as a fraction of the body length (0.02)
  * Neighbouring parts share a feathered zone; the part in front fades in over the part behind, whose
  * translucent pixels are thinned by exactly the amount that makes the neutral pose identical to img.
  */
 function sliceRig(view, img, R) {
   const { S, ox, oy } = view;
   const X = (x) => Math.round(ox + x * S);
-  const ov = Math.max(4, Math.round(S * 0.02));
+  const ov = Math.max(4, Math.round(S * (R.feather ?? 0.02)));
   const under = 2;
   const bTail = X(R.xTail);
   const bStart = X(R.xStart);
@@ -1107,12 +1108,12 @@ const MORAY = {
   ss: 3,
   body: {
     pts: [
-      // back, snout to tail tip (authored straight: the wave rig bends it)
-      [0.497, 0.003], [0.494, 0.014], [0.483, 0.024], [0.46, 0.032], [0.43, 0.039], [0.39, 0.046], [0.34, 0.05], [0.25, 0.05], [0.1, 0.049],
-      [-0.05, 0.047], [-0.2, 0.042], [-0.32, 0.035], [-0.4, 0.027], [-0.45, 0.018], [-0.485, 0.008], [-0.497, 0.0],
-      // belly, tail tip to chin (the lower jaw hangs open)
-      [-0.485, -0.008], [-0.45, -0.018], [-0.4, -0.027], [-0.32, -0.036], [-0.2, -0.043], [-0.05, -0.048], [0.1, -0.05], [0.25, -0.051],
-      [0.34, -0.054], [0.39, -0.052], [0.43, -0.046], [0.46, -0.039], [0.48, -0.032], [0.49, -0.025], [0.4945, -0.015],
+      // back, blunt snout to tail tip (authored straight: the wave rig bends it)
+      [0.497, 0.006], [0.494, 0.018], [0.484, 0.028], [0.462, 0.036], [0.43, 0.041], [0.39, 0.044], [0.34, 0.045], [0.25, 0.044], [0.1, 0.043],
+      [-0.05, 0.041], [-0.2, 0.037], [-0.32, 0.031], [-0.4, 0.024], [-0.45, 0.016], [-0.485, 0.007], [-0.497, 0.0],
+      // belly, tail tip to chin (swollen throat, the lower jaw hangs open)
+      [-0.485, -0.007], [-0.45, -0.016], [-0.4, -0.024], [-0.32, -0.032], [-0.2, -0.038], [-0.05, -0.042], [0.1, -0.044], [0.25, -0.045],
+      [0.34, -0.049], [0.39, -0.051], [0.43, -0.05], [0.46, -0.046], [0.48, -0.04], [0.49, -0.033], [0.4945, -0.022],
     ],
     ratio: [[0.5, 0.9], [0.3, 0.92], [0, 0.85], [-0.3, 0.72], [-0.5, 0.5]],
     mid: 0.5,
@@ -1120,12 +1121,12 @@ const MORAY = {
   fins: {
     // one continuous fleshy fold: dorsal fin from the nape, round the tail tip, anal fin to mid body
     fold: [
-      [0.385, 0.03], [0.362, 0.054], [0.33, 0.066], [0.28, 0.072], [0.18, 0.074], [0.05, 0.073], [-0.1, 0.07], [-0.24, 0.063], [-0.35, 0.05],
-      [-0.43, 0.034], [-0.48, 0.018], [-0.5, 0.0], [-0.48, -0.017], [-0.43, -0.031], [-0.35, -0.046], [-0.24, -0.057], [-0.1, -0.063],
-      [-0.02, -0.064], [0.02, -0.058], [0.04, -0.04],
+      [0.385, 0.028], [0.362, 0.05], [0.33, 0.06], [0.28, 0.064], [0.18, 0.064], [0.05, 0.062], [-0.1, 0.058], [-0.24, 0.052], [-0.35, 0.042],
+      [-0.43, 0.03], [-0.48, 0.016], [-0.5, 0.0], [-0.48, -0.015], [-0.43, -0.028], [-0.35, -0.04], [-0.24, -0.048], [-0.1, -0.053],
+      [0.0, -0.052], [0.06, -0.047], [0.1, -0.036],
     ],
   },
-  rig: { xTail: -0.43, xStart: 0.37, strips: 10, ampPed: 0.03, lagPed: 6.0, pow: 1.2, rot: 4, squash: 0.1 },
+  rig: { xTail: -0.43, xStart: 0.37, strips: 10, ampPed: 0.028, lagPed: 5.2, pow: 1.2, rot: 4, squash: 0.1, feather: 0.036 },
 };
 
 function buildMoray(id, opts) {
@@ -1147,13 +1148,13 @@ function buildMoray(id, opts) {
   };
   const skinCol = (x, y) => {
     const V = unwrap(x, y);
-    const dens = 46 + 150 * Math.max(0, x - 0.3); // finer spots on the head
-    const X = 46 * x + 75 * Math.pow(Math.max(0, x - 0.3), 2);
+    const dens = 52 + 150 * Math.max(0, x - 0.3); // finer spots on the head
+    const X = 52 * x + 75 * Math.pow(Math.max(0, x - 0.3), 2);
     let c = mul3(A, 0.62 + 0.4 * organic(x * 14, V * 14, seed, 3));
     c = saturate([c[0] * 1.1, c[1] * 0.98, c[2] * 0.86], 1.3);
     const w = worley(X, V * dens, seed + 3);
-    if (w.id > 0.1) {
-      const rad = 0.16 + 0.16 * fract(w.id * 7.13);
+    if (w.id > 0.06) {
+      const rad = 0.15 + 0.14 * fract(w.id * 7.13);
       c = mul3(c, 1 - 0.5 * smoothstep(rad + 0.17, rad + 0.03, w.f1));
       c = mix3(c, cream, smoothstep(rad + 0.035, rad - 0.035, w.f1));
     }
@@ -1161,12 +1162,12 @@ function buildMoray(id, opts) {
     return mix3(c, cream, smoothstep(-0.484, -0.495, x));
   };
   // ---- open mouth: white lining between the lips, a small notch between the jaw tips
-  const xc = 0.418;
+  const xc = 0.41;
   const xu = 0.4945;
-  const lipU = (t) => lerp(-0.012, -0.0005, t) - 0.003 * Math.sin(PI * t);
-  const lipL = (t) => lerp(-0.012, -0.0165, t) - 0.0015 * Math.sin(PI * t);
-  const notch = makeSdf(outline([[0.4815, -0.0085, 1], [0.5, 0.0005, 1], [0.5, -0.0165, 1]], 4), 0.5 * px, 0.01);
-  const eye = { x: 0.4635, y: 0.0145, r: 0.0098, iris: [0.86, 0.8, 0.5], pr: 0.5, socket: 0.45, seed: 9 };
+  const lipU = (t) => lerp(-0.012, 0.001, t) - 0.003 * Math.sin(PI * t);
+  const lipL = (t) => lerp(-0.012, -0.0205, t) - 0.002 * Math.sin(PI * t);
+  const notch = makeSdf(outline([[0.478, -0.0095, 1], [0.5, 0.003, 1], [0.5, -0.0205, 1]], 4), 0.5 * px, 0.01);
+  const eye = { x: 0.461, y: 0.0195, r: 0.0105, iris: [0.86, 0.8, 0.5], pr: 0.5, socket: 0.45, seed: 9 };
   const G = { n: [0, 0, 1] };
   const bodyFn = (x, y, out) => {
     const sd = body.sdf.at(x, y);
@@ -1189,16 +1190,16 @@ function buildMoray(id, opts) {
           let m = mix3([0.93, 0.9, 0.86], [0.8, 0.6, 0.56], 0.45 * smoothstep(0.5, 0.0, t));
           m = mul3(m, (0.55 + 0.45 * smoothstep(yU, yL, y)) * (0.5 + 0.5 * smoothstep(0.0, 0.45, t)));
           // needle teeth on both jaws
-          const tw = 0.0115;
+          const tw = 0.012;
           const fu = (x - 0.4385) / tw;
           const fl = fu + 0.5;
-          const len = 0.0065 * smoothstep(0.15, 0.5, t);
+          const len = 0.0085 * smoothstep(0.15, 0.5, t);
           const du = (yU - y) / len;
           const dl = (y - yL) / len;
           const wu = Math.abs(fract(fu) - 0.5) * tw;
           const wl = Math.abs(fract(fl) - 0.5) * tw;
-          if (x > 0.433 && du < 1 && wu < 0.0019 * (1 - du)) m = mul3([1.0, 0.97, 0.88], 0.8 + 0.3 * du);
-          else if (x > 0.433 && dl < 1 && wl < 0.0019 * (1 - dl)) m = mul3([1.0, 0.97, 0.88], 0.8 + 0.3 * dl);
+          if (x > 0.433 && du < 1 && wu < 0.0023 * (1 - du)) m = mul3([1.0, 0.96, 0.84], 0.72 + 0.3 * du);
+          else if (x > 0.433 && dl < 1 && wl < 0.0023 * (1 - dl)) m = mul3([1.0, 0.96, 0.84], 0.72 + 0.3 * dl);
           c = tone(mul3(m, 0.96));
         } else {
           // rounded lips: the lower one catches the light, the upper one is in its own shadow
@@ -1217,7 +1218,7 @@ function buildMoray(id, opts) {
     }
     if (!c) {
       // jaw muscle swell behind the eye, throat pleats, the small dark gill opening
-      bump(n, x, y, 0.405, 0.012, 0.035, 0.022, 0.004);
+      bump(n, x, y, 0.4, 0.014, 0.035, 0.022, 0.004);
       if (x > 0.3 && x < 0.455 && s < -0.25) {
         const pl = Math.sin((s + 1) * 26);
         const k = smoothstep(0.3, 0.33, x) * smoothstep(0.455, 0.42, x) * smoothstep(-0.25, -0.45, s);
@@ -1239,7 +1240,7 @@ function buildMoray(id, opts) {
     return true;
   };
   // ---- tube nostril on the snout tip
-  const nb = [0.4905, 0.0095, 0.5035, 0.0145, 0.0034];
+  const nb = [0.4915, 0.0125, 0.5005, 0.016, 0.003];
   const nostril = {
     box: [nb[0] - nb[4], nb[1] - nb[4], nb[2] + nb[4], nb[3] + nb[4]],
     fn: (x, y, out) => {
@@ -1252,7 +1253,7 @@ function buildMoray(id, opts) {
       const side = Math.sign((x - nb[0]) * -uy + (y - nb[1]) * ux) || 1;
       const l = Math.hypot(ux, uy);
       const nn = [(-uy / l) * side * q, (ux / l) * side * q, Math.sqrt(Math.max(0.02, 1 - q * q))];
-      const c = skin(mix3(mul3(A, 0.9), cream, 0.25 + 0.45 * r[1]), nn, 0.4, 0.2, 1, 0.3);
+      const c = skin(mix3(mul3(A, 0.9), cream, 0.08 + 0.3 * r[1]), nn, 0.4, 0.2, 1, 0.3);
       out[0] = c[0];
       out[1] = c[1];
       out[2] = c[2];
@@ -1261,7 +1262,7 @@ function buildMoray(id, opts) {
     },
   };
   const fold = foilFin(F.fold, pitch, {
-    alb: (x, y, sd) => mul3(skinCol(x, y), 0.82 + 0.18 * smoothstep(0, 0.012, sd)),
+    alb: (x, y, sd) => mul3(skinCol(x, y), 0.74 + 0.16 * smoothstep(0, 0.012, sd)),
     dome: [0, 0], rim: 0.8, rimW: 0.004, gloss: 0.4, sheen: 0.18,
     ao: (x, y) => 0.78 + 0.22 * smoothstep(0, 0.014, -body.sdf.at(x, y)),
   });
