@@ -142,7 +142,7 @@ More in [docs/ART_PIPELINE.md](docs/ART_PIPELINE.md).
 ```
 channel/                 the Roku channel (this folder is what gets zipped)
   manifest
-  source/*.brs           about 11,800 lines of BrightScript
+  source/*.brs           about 12,000 lines of BrightScript
   assets/                sprite atlases (WebP) + sprites.json        <- built by tools/art
   data/                  species, balance, food web, regions, scenes <- built by tools/export-data, tools/art
   sounds/                effects (WAV) and music (MP3)               <- built by tools/audio
@@ -211,10 +211,12 @@ Things that can only be settled on hardware:
   populates the first region; this was not timed on a device.
 - **Texture memory** at High detail (about 53 MB with the reduced copies). Low detail exists for
   this; confirm which devices Auto should put in it.
-- **Mirrored sprites, rotation and colour tinting.** These are documented behaviour of the 2D
-  API and the channel probes them at start-up (`GfxProbe`). Without rotation it draws parts
-  unrotated; it has no substitute for mirroring or tinting, so a device lacking either would
-  show wrong art.
+- **Mirrored sprites and free rotation.** Roku's documentation only promises positive scales and
+  right-angle rotation, although current players do both. The channel tests them at start-up
+  (`GfxProbe`) and prints the result to the debug console. Without rotation it draws parts
+  unrotated (fish do not pitch, fins do not swing); without mirroring it has no substitute yet,
+  so fish would face right whichever way they swim. Colour tinting is documented behaviour and
+  is relied on.
 - **Sound mix.** Effect volumes were set by measurement, not by ear.
 - **WebP atlases** need Roku OS 9.4 or newer.
 

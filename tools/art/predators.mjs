@@ -1554,6 +1554,100 @@ function buildHumphead(id, opts) {
   return assemble(S, ss, layers, K.rig, { layer: pect, pivot: [0.208, -0.034], flap: [16, 1.3, 0.6] });
 }
 
+// ---------------------------------------------------------------------------- crocodile needlefish
+const NEEDLEFISH = {
+  lenPx: 300,
+  ss: 3,
+  body: {
+    pts: [
+      // upper jaw of the beak, head, back
+      [0.4985, -0.0012], [0.47, 0.004], [0.42, 0.006], [0.36, 0.0085], [0.3, 0.0115], [0.27, 0.0145], [0.25, 0.019], [0.225, 0.0225],
+      [0.19, 0.025], [0.12, 0.027], [0.0, 0.028], [-0.12, 0.0275], [-0.22, 0.025], [-0.3, 0.02], [-0.36, 0.0145], [-0.395, 0.0115],
+      [-0.415, 0.01], [-0.43, 0.0],
+      // belly, throat, the slightly longer lower jaw
+      [-0.415, -0.01], [-0.395, -0.0115], [-0.36, -0.0155], [-0.3, -0.022], [-0.22, -0.028], [-0.12, -0.031], [0.0, -0.032], [0.12, -0.031],
+      [0.19, -0.029], [0.225, -0.0265], [0.25, -0.023], [0.27, -0.0185], [0.3, -0.0145], [0.36, -0.0115], [0.42, -0.009], [0.47, -0.0065],
+      [0.4995, -0.0035],
+    ],
+    ratio: 0.9,
+    mid: 0.5,
+  },
+  fins: {
+    dorsal: [[-0.24, 0.02], [-0.252, 0.05], [-0.266, 0.064, 1], [-0.28, 0.046], [-0.3, 0.034], [-0.33, 0.028], [-0.36, 0.024], [-0.386, 0.02, 1], [-0.378, 0.01]],
+    anal: [[-0.22, -0.024], [-0.235, -0.056], [-0.25, -0.072, 1], [-0.265, -0.052], [-0.29, -0.038], [-0.32, -0.03], [-0.355, -0.025], [-0.382, -0.02, 1], [-0.372, -0.01]],
+    pelvic: [[-0.094, -0.028], [-0.114, -0.05], [-0.13, -0.058, 1], [-0.132, -0.044], [-0.12, -0.028]],
+    caudal: [
+      [-0.398, 0.011], [-0.43, 0.026], [-0.46, 0.042], [-0.487, 0.053, 1], [-0.468, 0.03], [-0.45, 0.012], [-0.44, -0.002], [-0.452, -0.02],
+      [-0.474, -0.042], [-0.5, -0.065, 1], [-0.465, -0.05], [-0.43, -0.03], [-0.398, -0.011],
+    ],
+    pect: [[0.184, 0.002], [0.16, -0.012], [0.136, -0.03], [0.118, -0.046, 1], [0.136, -0.044], [0.16, -0.032], [0.182, -0.016]],
+  },
+  rig: { xTail: -0.405, xStart: 0.14, strips: 7, ampPed: 0.016, lagPed: 4.6, pow: 1.3, rot: 6, squash: 0.25 },
+};
+
+function buildNeedlefish(id, opts) {
+  const K = NEEDLEFISH;
+  const ctx = context(id, opts, K);
+  const { S, ss, px, pitch, body, F, A, B, C, seed } = ctx;
+  const back = mul3(mix3(A, C, 0.38), 0.8);
+  const stripe = mul3(mix3(C, hex('#123a6a'), 0.5), 0.8);
+  const silver = mul3(mix3(B, [0.72, 0.95, 0.86], 0.25), 0.95);
+  const belly = [0.94, 0.96, 0.96];
+  const opercle = makeStroke([[0.2, 0.018], [0.188, 0.004], [0.19, -0.012], [0.2, -0.022]]);
+  const eye = { x: 0.2355, y: 0.003, r: 0.0128, iris: [0.8, 0.86, 0.78], pr: 0.6, socket: 0.3, seed: 8 };
+  const G = { n: [0, 0, 1] };
+  const bodyFn = (x, y, out) => {
+    const sd = body.sdf.at(x, y);
+    if (sd <= -0.5 * pitch) return false;
+    const alpha = clamp(0.5 + sd / pitch);
+    body.geom(x, y, G);
+    const n = G.n;
+    const s = G.s;
+    // blue-green back, a dark blue line where it meets the silver flank, white belly
+    let alb = mix3(silver, back, smoothstep(-0.12, 0.2, s));
+    alb = mix3(alb, stripe, 0.8 * gauss(s + 0.04, 0.1) * smoothstep(0.26, 0.2, x));
+    alb = mix3(alb, belly, smoothstep(-0.25, -0.8, s));
+    alb = mul3(alb, 0.95 + 0.1 * organic(x * 60, y * 60, seed, 2));
+    let c = null;
+    if (x > 0.17) {
+      alb = mul3(alb, 1 - 0.45 * smoothstep(1.5 * px, 0.3 * px, opercle.dist(x, y)[0]));
+      if (x > 0.255) {
+        // the beak: a dark seam between the jaws with a row of needle teeth
+        const t = (x - 0.262) / (0.499 - 0.262);
+        const ym = lerp(-0.0035, -0.0022, t);
+        const hw = (0.0019 - 0.0007 * t) * smoothstep(0.0, 0.06, t);
+        const d = (y - ym) / hw;
+        if (d > -1 && d < 1 && t > 0) {
+          const f = fract(x / 0.0056);
+          const tooth = f < 0.42 && t > 0.06 && t < 0.97;
+          c = tone(tooth ? mul3([0.97, 0.96, 0.9], 0.8 + 0.2 * (1 - Math.abs(d))) : [0.03, 0.035, 0.04]);
+        } else if (Math.abs(d) < 2.2) alb = mul3(alb, 0.8);
+      }
+    }
+    // small black keel on the tail stalk
+    alb = mul3(alb, 1 - 0.6 * gauss(y - 0.0005, 0.0026) * smoothstep(-0.35, -0.375, x) * smoothstep(-0.425, -0.405, x));
+    if (!c) c = skin(alb, n, 0.55, 0.24, 0.8 + 0.2 * smoothstep(-1.0, -0.45, s), 0.2);
+    const ex = (x - eye.x) / eye.r;
+    const ey = (y - eye.y) / eye.r;
+    if (Math.abs(ex) < 2 && Math.abs(ey) < 2) c = eyeOver(c, ex, ey, eye);
+    out[0] = c[0];
+    out[1] = c[1];
+    out[2] = c[2];
+    out[3] = alpha;
+    return true;
+  };
+  const finCol = (k) => () => mul3(mix3(A, C, 0.6), k);
+  const layers = [
+    rayFin(F.caudal, pitch, { fan: [-0.385, -0.002], r0: 0.02, len: 0.11, rays: 36, col: finCol(0.6), alpha: [0.99, 0.93], edge: 0.5 }),
+    rayFin(F.dorsal, pitch, { fan: [-0.3, -0.03], r0: 0.05, len: 0.05, rays: 70, col: finCol(0.8), alpha: [0.98, 0.9], edge: 0.6 }),
+    rayFin(F.anal, pitch, { fan: [-0.29, 0.03], r0: 0.055, len: 0.05, rays: 70, col: finCol(0.8), alpha: [0.98, 0.9], edge: 0.6 }),
+    rayFin(F.pelvic, pitch, { fan: [-0.096, -0.026], r0: 0.004, len: 0.036, rays: 34, col: () => mix3(silver, back, 0.35), alpha: [0.95, 0.82] }),
+    { box: body.box, fn: bodyFn },
+  ];
+  const pect = rayFin(F.pect, pitch, { fan: [0.188, -0.004], r0: 0.004, len: 0.085, rays: 44, col: () => mix3(silver, back, 0.6), alpha: [0.95, 0.78] });
+  return assemble(S, ss, layers, K.rig, { layer: pect, pivot: [0.18, -0.006], flap: [12, 1.7, 0.6] });
+}
+
 // ---------------------------------------------------------------------------- module contract
 const BUILDERS = {
   greatWhite: (id, opts) => buildShark(id, opts, GREAT_WHITE),
@@ -1561,6 +1655,7 @@ const BUILDERS = {
   whitemouthMoray: buildMoray,
   blackfinBarracuda: buildBarracuda,
   humpheadWrasse: buildHumphead,
+  crocNeedlefish: buildNeedlefish,
 };
 
 /** Only finished, rigged animals are listed (the packer integrates whatever is here). */

@@ -97,7 +97,7 @@ sub GfxProbe()
     src = CreateObject("roBitmap", { width: 16, height: 16, AlphaEnable: true })
     dst = CreateObject("roBitmap", { width: 32, height: 32, AlphaEnable: true })
     if src = invalid or dst = invalid then
-        m.caps = caps
+        m.caps = { flip: true, rotate: true, tint: true }
         return
     end if
     src.Clear(&h000000FF)
@@ -105,6 +105,23 @@ sub GfxProbe()
     src.Finish()
     reg = CreateObject("roRegion", src, 0, 0, 16, 16)
     reg.SetPretranslation(-8, -8)
+    ' control: a plain draw must read back as drawn. If it does not, reading pixels back is not
+    ' reliable on this device and the probe proves nothing - assume the normal (OpenGL) behaviour
+    ' rather than switch features off by mistake.
+    dst.Clear(&h000000FF)
+    dst.DrawObject(16, 16, reg)
+    dst.Finish()
+    ba = dst.GetByteArray(12, 16, 1, 1)         ' left half: white
+    bb = dst.GetByteArray(20, 16, 1, 1)         ' right half: black
+    ok = false
+    if ba <> invalid and bb <> invalid then
+        if ba.Count() >= 3 and bb.Count() >= 3 then ok = (ba[0] > 170 and bb[0] < 80)
+    end if
+    if not ok then
+        m.caps = { flip: true, rotate: true, tint: true }
+        print "gfx caps: pixel read-back unavailable, assuming flip, rotate and tint"
+        return
+    end if
     ' mirror
     dst.Clear(&h000000FF)
     dst.DrawScaledObject(16, 16, -1.0, 1.0, reg)
@@ -139,8 +156,12 @@ sub GfxProbe()
             if ba[0] > 170 and ba[1] < 80 then caps.tint = true
         end if
     end if
+    ' colour modulation is documented behaviour of every draw call; the scenery depends on it
+    ' and has no substitute, so it is used regardless (the probe result is only logged)
+    probedTint = caps.tint
+    caps.tint = true
     m.caps = caps
-    print "gfx caps: flip="; caps.flip; " rotate="; caps.rotate; " tint="; caps.tint
+    print "gfx caps: flip="; caps.flip; " rotate="; caps.rotate; " tint="; probedTint
 end sub
 
 ' ---------------------------------------------------------------- text
