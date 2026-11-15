@@ -223,6 +223,15 @@ sub GameFrame(dt as float)
     end if
 
     if modal = "" then
+        ' nobody at the remote for three minutes (the screensaver may be up): pause rather than
+        ' let the fish starve unattended
+        if NowMs() - inp.lastAt > 180000 and p <> invalid then
+            if p.alive then
+                inp.lastAt = NowMs()
+                PauseOpen()
+                modal = "pause"
+            end if
+        end if
         for each k in inp.pressed
             if k = 0 or k = 13 then
                 PauseOpen()

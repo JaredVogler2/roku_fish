@@ -56,6 +56,7 @@ sub InputInit()
         repeatKey: -1       ' D-pad key currently auto-repeating in menus
         repeatAt: 0
         any: false
+        lastAt: NowMs()     ' when a button was last pressed or held (idle detection)
     }
 end sub
 
@@ -77,6 +78,7 @@ function InputPoll() as boolean
                 inp.held[code] = true
                 inp.pressed.Push(code)
                 inp.any = true
+                inp.lastAt = NowMs()
                 if code >= 2 and code <= 5 then
                     inp.repeatKey = code
                     inp.repeatAt = NowMs() + 420
@@ -89,6 +91,7 @@ function InputPoll() as boolean
     if inp.repeatKey >= 0 then
         if inp.held[inp.repeatKey] then
             now = NowMs()
+            inp.lastAt = now
             if now >= inp.repeatAt then
                 inp.pressed.Push(inp.repeatKey + 1000)   ' >= 1000 marks a repeat
                 inp.repeatAt = now + 110
