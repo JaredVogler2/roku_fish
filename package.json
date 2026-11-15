@@ -1,0 +1,23 @@
+{
+  "name": "roku-fish",
+  "private": true,
+  "version": "1.0.0",
+  "description": "REEFBOUND: The Living Reef - Roku channel (BrightScript 2D API) with its art, audio and data build tools.",
+  "type": "module",
+  "scripts": {
+    "export:data": "cd \"${REEFBOUND_DIR:-../REEFBOUND}\" && REEFBOUND_DIR=\"$PWD\" OUT_DIR=\"$OLDPWD/channel/data\" TOOLS_OUT_DIR=\"$OLDPWD/tools/art/data\" npx vite-node \"$OLDPWD/tools/export-data/export.ts\"",
+    "art": "node tools/art/build-art.mjs",
+    "audio": "python3 tools/audio/make_audio.py",
+    "lint": "bsc --project bsconfig.json",
+    "package": "node tools/build.mjs",
+    "sim": "node tools/sim/run.mjs",
+    "test": "node tools/sim/smoke.mjs"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1.80",
+    "brighterscript": "^0.73.8",
+    "brs-engine": "2.6.2",
+    "fflate": "^0.8.3",
+    "sharp": "^0.35.5"
+  }
+}

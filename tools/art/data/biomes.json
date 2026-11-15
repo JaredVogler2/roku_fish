@@ -1,0 +1,218 @@
+{
+ "sunlitGardens": {
+  "rock": [
+   "#6f655c",
+   "#7a6c62",
+   "#655f5a",
+   "#7e7064"
+  ],
+  "sand": "#e8d6a8",
+  "sandDark": "#c9b37f",
+  "coral": [
+   "#ff7aa8",
+   "#ff9d5c",
+   "#ffd25e",
+   "#c58cff",
+   "#ff6b6b",
+   "#7fe0c4"
+  ],
+  "soft": [
+   "#ffb3d1",
+   "#ffa86b",
+   "#d9a6ff",
+   "#9ff0d8"
+  ],
+  "fan": [
+   "#c23b6a",
+   "#e0593f",
+   "#8a3fd1"
+  ],
+  "grass": [
+   "#7fae3f",
+   "#9cc04d",
+   "#5f9a3a"
+  ],
+  "waterTop": "#3aaed8",
+  "waterDeep": "#0b4f8a",
+  "nightTop": "#0b2a52",
+  "nightDeep": "#040f28",
+  "fogDensity": 0.021,
+  "caustic": 1.15,
+  "backWall": 1,
+  "deepTint": "#3a74b8"
+ },
+ "seagrassNursery": {
+  "rock": [
+   "#7a6e60",
+   "#857664",
+   "#6c645a"
+  ],
+  "sand": "#f0dfae",
+  "sandDark": "#d6c08a",
+  "coral": [
+   "#ffb36b",
+   "#ffd77a",
+   "#ff8fb0",
+   "#9fe0b0"
+  ],
+  "soft": [
+   "#ffd1a6",
+   "#ffe0a6",
+   "#c2f0c0"
+  ],
+  "fan": [
+   "#d0703f",
+   "#b8445a"
+  ],
+  "grass": [
+   "#8fbf45",
+   "#b7cf55",
+   "#6fa33d",
+   "#c9c35a"
+  ],
+  "waterTop": "#4cc3d9",
+  "waterDeep": "#0f5f8f",
+  "nightTop": "#0d3350",
+  "nightDeep": "#06182b",
+  "fogDensity": 0.019,
+  "caustic": 1.25,
+  "backWall": 0.6,
+  "deepTint": "#4f8fbf"
+ },
+ "midReefDropoff": {
+  "rock": [
+   "#5e5a60",
+   "#665e58",
+   "#56585e",
+   "#6c6460"
+  ],
+  "sand": "#c9bf9f",
+  "sandDark": "#a39a7c",
+  "coral": [
+   "#e05aa0",
+   "#ff8a4a",
+   "#b46cff",
+   "#ffcf4a",
+   "#5ad1c6"
+  ],
+  "soft": [
+   "#ff9ac8",
+   "#ffb07a",
+   "#c9a0ff"
+  ],
+  "fan": [
+   "#b3245a",
+   "#7b2fc0",
+   "#d8452f"
+  ],
+  "grass": [
+   "#6f9a3f"
+  ],
+  "waterTop": "#2a8fcf",
+  "waterDeep": "#08386e",
+  "nightTop": "#0a2246",
+  "nightDeep": "#030b20",
+  "fogDensity": 0.026,
+  "caustic": 0.9,
+  "backWall": 0.8,
+  "deepTint": "#2c5ea8"
+ },
+ "twilightWreck": {
+  "rock": [
+   "#4a4e56",
+   "#544c46",
+   "#40464e"
+  ],
+  "sand": "#9f9a86",
+  "sandDark": "#7d7868",
+  "coral": [
+   "#7f6cff",
+   "#ff6fb5",
+   "#4fd6ff",
+   "#ffb04f"
+  ],
+  "soft": [
+   "#9a8cff",
+   "#ff9fd6",
+   "#7fe8ff"
+  ],
+  "fan": [
+   "#6a2fa8",
+   "#a8305a"
+  ],
+  "grass": [
+   "#4f7a4a"
+  ],
+  "waterTop": "#2e74a6",
+  "waterDeep": "#122a5a",
+  "nightTop": "#1a3a70",
+  "nightDeep": "#0c1a44",
+  "fogDensity": 0.032,
+  "caustic": 0.6,
+  "backWall": 0.9,
+  "absorb": 0.7,
+  "deepTint": "#4a5ab0"
+ },
+ "openBluewater": {
+  "rock": [
+   "#5c626a",
+   "#66625e"
+  ],
+  "sand": "#b9b39b",
+  "sandDark": "#948f7a",
+  "coral": [
+   "#ffcf4a",
+   "#ff7aa8"
+  ],
+  "soft": [
+   "#ffd1a6"
+  ],
+  "fan": [
+   "#c23b6a"
+  ],
+  "grass": [
+   "#6f9a3f"
+  ],
+  "waterTop": "#2a92d8",
+  "waterDeep": "#05285e",
+  "nightTop": "#071f46",
+  "nightDeep": "#020a1e",
+  "fogDensity": 0.022,
+  "caustic": 0.75,
+  "backWall": 0,
+  "deepTint": "#2a5cb0"
+ },
+ "deepCanyon": {
+  "rock": [
+   "#55485e",
+   "#4a4e5e",
+   "#5e5054"
+  ],
+  "sand": "#a8a08f",
+  "sandDark": "#857e70",
+  "coral": [
+   "#b46cff",
+   "#ff6fa0",
+   "#5ad1c6"
+  ],
+  "soft": [
+   "#c9a0ff",
+   "#ff9ac8"
+  ],
+  "fan": [
+   "#7b2fc0",
+   "#b3245a"
+  ],
+  "grass": [
+   "#4f7a4a"
+  ],
+  "waterTop": "#2a5fa8",
+  "waterDeep": "#120c3e",
+  "nightTop": "#0a1838",
+  "nightDeep": "#050417",
+  "fogDensity": 0.03,
+  "caustic": 0.55,
+  "backWall": 1,
+  "deepTint": "#4a3aa0"
+ }
+}

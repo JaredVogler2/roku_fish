@@ -1,0 +1,7 @@
+{
+  "rootDir": "channel",
+  "files": ["manifest", "source/**/*.brs"],
+  "createPackage": false,
+  "copyToStaging": false,
+  "diagnosticFilters": []
+}
