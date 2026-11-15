@@ -292,7 +292,9 @@ function compose(regionId) {
     if (sh.kind !== 'cave' && sh.kind !== 'wreck') continue;
     const si = sh.sector;
     // the back wall of the hollow: the formation's own rock, in shadow and shifted toward the water colour
-    const wall = mixRgb(scaleRgb(hexRgb(look(si).rock[0]), 0.62), hexRgb(look(si).deepTint), 0.3);
+    // (a wreck's hold is old timber, not reef rock)
+    const base = sh.kind === 'wreck' ? [104, 82, 60] : scaleRgb(hexRgb(look(si).rock[0]), 0.62);
+    const wall = mixRgb(base, hexRgb(look(si).deepTint), 0.3);
     const w = sh.hw * 2 + 0.9;
     const h = sh.hh * 2 + 1.0;
     add(si, 'back', 'cave_back', sh.x - w / 2, sh.y + h / 2, (w * PPU) / 256, (h * PPU) / 192, { tint: wall });

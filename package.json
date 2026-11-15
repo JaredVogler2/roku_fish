@@ -6,12 +6,14 @@
   "type": "module",
   "scripts": {
     "export:data": "cd \"${REEFBOUND_DIR:-../REEFBOUND}\" && REEFBOUND_DIR=\"$PWD\" OUT_DIR=\"$OLDPWD/channel/data\" TOOLS_OUT_DIR=\"$OLDPWD/tools/art/data\" npx vite-node \"$OLDPWD/tools/export-data/export.ts\"",
-    "art": "node tools/art/build-art.mjs",
+    "art": "node tools/art/build-art.mjs && node tools/art/scene.mjs",
+    "brand": "node tools/art/make-brand.mjs",
     "audio": "python3 tools/audio/make_audio.py",
     "lint": "bsc --project bsconfig.json",
     "package": "node tools/build.mjs",
     "sim": "node tools/sim/run.mjs",
-    "test": "node tools/sim/smoke.mjs"
+    "test": "bsc --project bsconfig.json && node tools/build.mjs && node tools/sim/run.mjs --script=tools/sim/scripts/smoke.mjs --quiet",
+    "soak": "node tools/sim/run.mjs --script=tools/sim/scripts/soak.mjs --quiet"
   },
   "devDependencies": {
     "@napi-rs/canvas": "^0.1.80",

@@ -31,7 +31,9 @@ sub HudDraw(w as object, dt as float)
     ' ---- species chip
     UiPanel(48, 28, 336, 92)
     UiPortrait(sp, 56, 36, 116, 76, true, true)
-    scr.DrawText(FitText(sp.name, "smallb", 196), 182, 36, ui.text, m.fonts.smallb)
+    nf = "smallb"
+    if TextWidth(sp.name, nf) > 196 then nf = "tiny"
+    scr.DrawText(FitText(sp.name, nf, 196), 182, 38, ui.text, m.fonts[nf])
     meta = ""
     if asc then
         meta = m.bal.growth.milestonenames[ps.milestone] + "  " + Fmt2(p.length / MaxF(0.01, ps.initialLength)) + "x length"

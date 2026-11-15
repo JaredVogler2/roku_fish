@@ -65,8 +65,8 @@ function WaterColor(biome as string, depth as float, dl as float) as object
     end for
     ' dawn and dusk warm the upper water
     warm = 4 * dl * (1 - dl) * (1 - depth)
-    out[0] = Int(out[0] + 70 * warm)
-    out[1] = Int(out[1] + 18 * warm)
+    out[0] = Int(out[0] + 40 * warm)
+    out[1] = Int(out[1] + 8 * warm)
     if out[0] > 255 then out[0] = 255
     if out[1] > 255 then out[1] = 255
     return out
@@ -133,10 +133,12 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
     rw.light = light
     rw.lightCol = lightCol
 
-    pf = m.prof
-    if pf <> invalid then pf.t0 = pf.ts.TotalMilliseconds()
     RenderBackdrop(w, rr, biome, sector, t, dl, light)
-    if pf <> invalid then pf.back = pf.back + pf.ts.TotalMilliseconds() - pf.t0: pf.t0 = pf.ts.TotalMilliseconds()
+
+    ' Animals are lit a little more generously than the scenery in dim water, so they still read
+    ' on a television at night and at depth (no change in full daylight).
+    light = [light[0] + (1 - light[0]) * 0.3, light[1] + (1 - light[1]) * 0.3, light[2] + (1 - light[2]) * 0.3]
+    if canTint then lightCol = LightColor(light)
 
     ' ---- scenery: the camera sits in one sector; while panning the neighbours are visible too
     scene = rw.scene
@@ -165,9 +167,11 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
                 end for
             end if
         end for
-        for each sec in secs
-            SceneDrawLayer(sec.layers[0], camX, camY, ppu, cx, cy, hw, hh, t, canRot)
-        end for
+        if not m.lowFx then
+            for each sec in secs
+                SceneDrawLayer(sec.layers[0], camX, camY, ppu, cx, cy, hw, hh, t, canRot)
+            end for
+        end if
         ' the body of the seabed: one rectangle from just under the sand line to the screen bottom
         if camY - hh < 1.2 then
             sy0 = cy - Int((0.25 - camY) * ppu)
@@ -186,7 +190,6 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
         RenderDebugTerrain(rr, camX, camY, ppu, cx, cy, hw, hh)
     end if
 
-    if pf <> invalid then pf.scene = pf.scene + pf.ts.TotalMilliseconds() - pf.t0: pf.t0 = pf.ts.TotalMilliseconds()
     RenderPasses(w, rr, camX, camY, ppu, cx, cy, hw, hh, t)
 
     ' ---- creatures: rooted and crawling life first, then swimmers, the player last
@@ -259,7 +262,6 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
     end if
     RenderEffects(w, camX, camY, ppu, cx, cy, hw, hh, t, true)
 
-    if pf <> invalid then pf.crea = pf.crea + pf.ts.TotalMilliseconds() - pf.t0: pf.t0 = pf.ts.TotalMilliseconds()
     ' ---- foreground cover
     if scene <> invalid then
         for each sec in secs
@@ -267,11 +269,9 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
         end for
     end if
 
-    if pf <> invalid then pf.front = pf.front + pf.ts.TotalMilliseconds() - pf.t0: pf.t0 = pf.ts.TotalMilliseconds()
     RenderParticles(w, dt, camX, camY, ppu, cx, cy, hw, hh, t, paused, light)
     RenderRings(w, ppu, t)
     RenderScreenFx(w, dt)
-    if pf <> invalid then pf.post = pf.post + pf.ts.TotalMilliseconds() - pf.t0: pf.frames = pf.frames + 1
 end sub
 
 sub RenderOneCreature(w as object, c as object, ppu as float, lightCol as integer, light as object, now as float, t as float, dl as float)
@@ -281,6 +281,13 @@ sub RenderOneCreature(w as object, c as object, ppu as float, lightCol as intege
     r = light[0]
     g = light[1]
     b = light[2]
+    if c.isPlayer and r < 0.8 then
+        ' your own fish is always the easiest thing to find
+        r = r + (1 - r) * 0.4
+        g = g + (1 - g) * 0.4
+        b = b + (1 - b) * 0.4
+        special = true
+    end if
     if not c.alive then
         k = 1 - (now - c.diedAt) / 2.5
         if c.isPlayer then k = 1 - (now - c.diedAt) / 4.0
@@ -450,16 +457,22 @@ sub RenderParticles(w as object, dt as float, camX as float, camY as float, ppu 
         mvx = -m.cam.velX * ppu * 0.25
         mvy = m.cam.velY * ppu * 0.25
         skyY = 360 - Int((40.5 - camY) * ppu)
+        skip = false
+        lowFx = m.lowFx
         for each q in rw.motes
-            if not paused then
-                q.x = q.x + (q.vx + mvx + Sin(t * 0.6 + q.ph) * 6) * dt
-                q.y = q.y + (q.vy + mvy) * dt
-                if q.x < -8 then q.x = q.x + 1296
-                if q.x > 1288 then q.x = q.x - 1296
-                if q.y < -8 then q.y = q.y + 736
-                if q.y > 728 then q.y = q.y - 736
+            ' low detail: every other mote
+            if lowFx then skip = not skip
+            if not skip then
+                if not paused then
+                    q.x = q.x + (q.vx + mvx + Sin(t * 0.6 + q.ph) * 6) * dt
+                    q.y = q.y + (q.vy + mvy) * dt
+                    if q.x < -8 then q.x = q.x + 1296
+                    if q.x > 1288 then q.x = q.x - 1296
+                    if q.y < -8 then q.y = q.y + 736
+                    if q.y > 728 then q.y = q.y - 736
+                end if
+                if q.y > skyY then scr.DrawScaledObject(Int(q.x), Int(q.y), q.s, q.s, reg, &hDFF6FF00 + Int(q.a * lum))
             end if
-            if q.y > skyY then scr.DrawScaledObject(Int(q.x), Int(q.y), q.s, q.s, reg, &hDFF6FF00 + Int(q.a * lum))
         end for
     end if
     bl = rw.bubbles

@@ -44,26 +44,30 @@ sub Main(args as dynamic)
     RenderInit()
     GameStartAttract()
     LoadingDraw(1.0, "Warming the water")
+    m.splashBmp = invalid
     AppGoto("menu")
     AppDebugArgs(args)
     AppLoop()
 end sub
 
+' The loading screen is the splash picture again (so the hand-over from the system splash is
+' seamless) with a progress bar under the wordmark.
 sub LoadingDraw(frac as float, msg as string)
     scr = m.screen
+    if m.splashTried <> true then
+        m.splashTried = true
+        m.splashBmp = CreateObject("roBitmap", "pkg:/images/splash_hd.jpg")
+    end if
     scr.Clear(&h04162BFF)
-    scr.DrawRect(0, 0, 1280, 240, &h0A3A5E40)
-    scr.DrawRect(0, 0, 1280, 120, &h0E4E7830)
-    lg = m.spr["ui_logo"]
-    if lg <> invalid then
-        scr.DrawObject(640, 300, lg.parts[0].r0)
+    if m.splashBmp <> invalid then
+        scr.DrawObject(0, 0, m.splashBmp)
     else
         DrawTextC("REEFBOUND", 640, 250, &hEEF9FFFF, "huge")
         DrawTextC("THE LIVING REEF", 640, 330, &hB4D2E0FF, "small")
     end if
-    scr.DrawRect(440, 430, 400, 10, &h0E3552FF)
-    scr.DrawRect(440, 430, Int(400 * frac), 10, &h5FE3F0FF)
-    DrawTextC(msg + "...", 640, 454, &hB4D2E0FF, "small")
+    scr.DrawRect(440, 440, 400, 10, &h0E3552FF)
+    scr.DrawRect(440, 440, Int(400 * frac), 10, &h5FE3F0FF)
+    DrawTextShadowC(msg + "...", 640, 462, &hD8ECF6FF, "small")
     scr.SwapBuffers()
 end sub
 
@@ -111,6 +115,7 @@ sub AppLoop()
     app = m.app
     last = NowMs()
     frames = 0
+    slow = 0
     statAt = last
     while not app.quit
         InputPoll()
@@ -131,6 +136,19 @@ sub AppLoop()
             m.game.fps = frames * 1000.0 / (now - statAt)
             frames = 0
             statAt = now
+            ' On Auto, a player that cannot hold a playable frame rate sheds decoration by itself
+            ' (distant growth, light shafts, half the drifting particles) - never the simulation.
+            if m.save.settings.detail = "auto" and not m.lowFx then
+                if m.game.fps < 21 then
+                    slow = slow + 1
+                    if slow >= 6 then
+                        m.lowFx = true
+                        print "gfx: frame rate is low, switching decoration to low detail"
+                    end if
+                else
+                    slow = 0
+                end if
+            end if
         end if
     end while
     GameSaveProgress()
@@ -141,6 +159,15 @@ end sub
 sub AppTestHook(w as object)
     app = m.app
     t = app.test
+    if t = "trace" then
+        ' once a second: where the player and the camera are (for chasing camera bugs)
+        if w.tick MOD 30 = 0 and w.player <> invalid then
+            p = w.player
+            cam = m.cam
+            print "trace t="; Int(w.time); " p=("; Int(p.x * 10) / 10; ","; Int(p.y * 10) / 10; ") sec="; p.sector; " cam=("; Int(cam.x * 10) / 10; ","; Int(cam.y * 10) / 10; ") camsec="; cam.sector; " scr=("; p.scrX; ","; p.scrY; ") vh="; Int(cam.viewH * 10) / 10; " trans="; cam.trans; " fps="; Int(m.game.fps)
+        end if
+        return
+    end if
     if t = invalid or w.time < 3 then return
     app.test = invalid
     p = w.player
@@ -307,6 +334,7 @@ sub MenuFrame(dt as float)
 
     GameStep(dt, true)
     RenderWorld(g.w, dt, g.alpha, false)
+    if app.test = "clean" then return     ' (test harness) the reef alone, for the splash artwork
     sc = app.screen
     if sc = "menu" then
         MenuDraw()

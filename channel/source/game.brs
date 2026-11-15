@@ -599,6 +599,7 @@ sub GameEvents(w as object)
             GameSaveCheckpoint()
         else if ev = "REGION_UNLOCKED" then
             GameSaveProgress()
+            GameToast("A reef pass has opened: " + RegionName(e.region), "good")
         else if ev = "HINT" then
             GameToast(e.text, "good")
         else if ev = "TUTORIAL_DONE" then

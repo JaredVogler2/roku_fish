@@ -11,7 +11,7 @@
  *   post_*    thin vertical piece, 0.9 units (cave side walls)    (t, m, b)
  *   pillar_*  free-standing coral pillar, 2.4 units across        (t, m, b)
  *   boulder_* rounded rocks, 2 units across
- *   sand_*    seabed: rippled surface strip and fill
+ *   sand_top  seabed: the rippled surface strip (the device fills the body of the seabed itself)
  *   plank_*, plankv_*, mast_*, crate, porthole: the wreck
  * Rock and sand are rendered in neutral light greys (the device tints them per biome).
  */
@@ -267,20 +267,6 @@ function sandTop() {
     return true;
   }, { pad: 16, aoR: 6, aoK: 0.11, shadow: 16, shadowK: 0.6, key: 1.1, ambient: 0.8 }), [0, 26]);
 }
-function sandFill() {
-  return piece(256, 128, (x, y, o) => {
-    const grain = vnoise(x * 0.8, y * 0.8, 77, 0);
-    const n = fbm(x / 64, y / 64, 3, 12, 4);
-    const speck = hash2(Math.floor(x / 2), Math.floor(y / 2), 9) > 0.975 ? 0.08 : 0;
-    const v = 0.8 + (grain - 0.5) * 0.06 + (n - 0.5) * 0.08 - speck;
-    o[0] = v * 1.03;
-    o[1] = v;
-    o[2] = v * 0.97;
-    o[3] = 1;
-    return true;
-  }, [0, 0]);
-}
-
 // ---------------------------------------------------------------------------- wreck timber
 function timberShade(x, y, w, h, alongX, seed) {
   // planks run along the long axis; boards have seams, grain, knots and a little growth
@@ -397,7 +383,6 @@ const BUILD = {
   patch_2: () => patch(8, 144, 104),
   patch_3: () => patch(14, 200, 96),
   sand_top: () => sandTop(),
-  sand_fill: () => sandFill(),
   plank_l: () => plankH('l', 96, 62, 81),
   plank_m: () => plankH('m', 288, 62, 81),
   plank_r: () => plankH('r', 96, 62, 81),

@@ -99,6 +99,7 @@ function PlayerStateNew() as object
         chaseBest: 9999.0
         chaseProgressAt: 0.0
         avoidSide: 1
+        awayT: 0.0
         feedback: ""
         feedbackAt: -99.0
         preyEaten: 0, bites: 0, swallows: 0, misses: 0, escapes: 0

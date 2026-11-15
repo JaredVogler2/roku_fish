@@ -108,7 +108,7 @@ sub RenderBackdrop(w as object, rr as object, biome as string, sector as integer
 
     ' ---- light shafts: slow, soft, strongest near the surface in daylight
     shaft = m.spr["fx_shaft"]
-    if shaft <> invalid then
+    if shaft <> invalid and not m.lowFx then
         depth = 1 - cam.y / 40.5
         strength = (0.25 + 0.75 * dl) * (1 - depth * 0.75)
         if biome = "twilightWreck" then strength = strength * 0.6

@@ -492,8 +492,11 @@ sub SettingsEnter()
     for each r in RulesRows()
         rows.Push(r)
     end for
-    rows.Push({ kind: "text", label: "SAVED DATA" })
-    rows.Push({ kind: "button", id: "reset", label: "Erase all progress", help: "Deletes checkpoints, discoveries, scores and Reef Lab designs on this device." })
+    if m.app.screen = "settings" then
+        ' (only from the main menu: erasing progress in the middle of a run would be a trap)
+        rows.Push({ kind: "text", label: "SAVED DATA" })
+        rows.Push({ kind: "button", id: "reset", label: "Erase all progress", help: "Deletes checkpoints, discoveries, scores and Reef Lab designs on this device." })
+    end if
     if m.app.screen = "settings" then
         m.app.st = { form: FormNew(rows), confirm: false }
     else

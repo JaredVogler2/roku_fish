@@ -1,17 +1,32 @@
-// First-light check: boot, play a few seconds, take pictures.
+// Smoke test: boot to the menu, start Reef Ascension, swim, bite, pause, resume.
+// Fails (throws) if the channel stops or never reaches the menu.
 export default async function (sim) {
-  // wait for the loading to finish (the first frame prints a stats line after two seconds)
-  for (let i = 0; i < 60; i++) {
-    await sim.wait(1000);
-    if ((await sim.logs()).some((l) => l.includes('fps='))) break;
+  let loaded = false;
+  for (let i = 0; i < 120 && !loaded; i++) {
+    await sim.wait(500);
+    loaded = (await sim.logs()).some((l) => l.includes('gfx detail'));
   }
-  await sim.wait(1500);
-  await sim.shot('01-start');
+  if (!loaded) throw new Error('the channel did not start');
+  await sim.wait(9000);
+  await sim.shot('smoke-1-menu');
+  // a first launch focuses the tutorial row; two downs wrap to "Play - Reef Ascension"
+  await sim.press('down');
+  await sim.press('down');
+  await sim.press('ok');
+  await sim.wait(1000);
+  await sim.press('down');
+  await sim.press('ok');
+  await sim.wait(4500);
   await sim.down('right');
-  await sim.wait(2500);
+  await sim.wait(2000);
   await sim.up('right');
-  await sim.shot('02-swim');
-  await sim.press('select');
-  await sim.wait(3000);
-  await sim.shot('03-bite');
+  await sim.press('ok');
+  await sim.wait(2500);
+  await sim.shot('smoke-2-play');
+  await sim.press('play');
+  await sim.wait(600);
+  await sim.shot('smoke-3-pause');
+  await sim.press('ok');
+  await sim.wait(800);
+  if (!(await sim.running())) throw new Error('the channel stopped during the smoke test');
 }
