@@ -4,6 +4,7 @@
  * device available on a build machine.
  *
  *   node tools/sim/run.mjs [--zip=dist/reefbound.zip] [--script=tools/sim/scripts/smoke.mjs] [--out=tools/sim/out]
+ *                          [--args=mode=practice,species=lionfish] [--stock-engine]
  *
  * A script is an ES module exporting `default async function (sim)`. The `sim` object offers:
  *   sim.wait(ms)              let the channel run
@@ -108,7 +109,9 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
 await page.goto(`http://localhost:${port}/`);
-await page.evaluate(async () => {
+// --args=mode=practice,species=greatWhite  ->  launch parameters (the channel's Main(args))
+const launchArgs = flag('args', '').split(',').filter(Boolean).map((kv) => kv.split('='));
+await page.evaluate(async (deepLink) => {
   window.__log = [];
   window.__state = { running: false, exit: null };
   const b = window.brs;
@@ -126,13 +129,15 @@ await page.evaluate(async () => {
   // the engine fetches its shared assets (fonts, system sounds) asynchronously
   await new Promise((r) => setTimeout(r, 1500));
   const buf = await (await fetch('/app.zip')).arrayBuffer();
-  b.execute('app.zip', buf, { clearDisplayOnExit: false });
-});
+  b.execute('app.zip', buf, { clearDisplayOnExit: false }, new Map(deepLink));
+}, launchArgs);
 
+// friendly names for the remote's buttons -> the engine's key names
+const KEY = { replay: 'instantreplay', ok: 'select', star: 'info', options: 'info', rewind: 'rev', forward: 'fwd' };
 const sim = {
   wait: (ms) => page.waitForTimeout(ms),
-  down: (key) => page.evaluate((k) => window.brs.sendKeyDown(k), key),
-  up: (key) => page.evaluate((k) => window.brs.sendKeyUp(k), key),
+  down: (key) => page.evaluate((k) => window.brs.sendKeyDown(k), KEY[key] ?? key),
+  up: (key) => page.evaluate((k) => window.brs.sendKeyUp(k), KEY[key] ?? key),
   async press(key, hold = 80) {
     await sim.down(key);
     await page.waitForTimeout(hold);

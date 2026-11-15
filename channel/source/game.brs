@@ -6,7 +6,7 @@
 sub GameInit()
     m.game = {
         w: invalid
-        rc: invalid            ' the configuration of the current rc (invalid = attract scene)
+        rc: invalid            ' the configuration of the current run (invalid = attract scene)
         acc: 0.0
         alpha: 1.0
         toasts: []
@@ -15,6 +15,7 @@ sub GameInit()
         deathAt: -1.0
         lastCheckpoint: invalid
         dangerSmooth: 0.0
+        recorded: false
         fps: 60.0
         frameMs: 16.0
         simMs: 0.0
@@ -97,6 +98,7 @@ end sub
 sub GameStartRun(rc as object)
     g = m.game
     g.rc = rc
+    g.recorded = false
     g.stageCleared = invalid
     g.deathAt = -1.0
     g.toasts = []
@@ -306,6 +308,34 @@ sub GameDeathChoice(opt as string)
     end if
 end sub
 
+' Keep the best challenge runs (once per run).
+sub GameRecordChallenge(done as boolean)
+    g = m.game
+    if g.recorded then return
+    g.recorded = true
+    w = g.w
+    seed = w.mode.seed
+    if seed = invalid then seed = ""
+    list = m.save.challenge
+    list.Push({ score: w.ps.score, seed: seed, done: done })
+    ' highest first, top eight
+    n = list.Count()
+    for i = 1 to n - 1
+        j = i
+        while j > 0
+            if list[j - 1].score >= list[j].score then exit while
+            t = list[j - 1]
+            list[j - 1] = list[j]
+            list[j] = t
+            j = j - 1
+        end while
+    end for
+    while list.Count() > 8
+        list.Pop()
+    end while
+    SaveWrite()
+end sub
+
 sub GameSaveCheckpoint()
     g = m.game
     w = g.w
@@ -323,7 +353,7 @@ sub GameSaveCheckpoint()
     GameSaveProgress()
 end sub
 
-' Records, discoveries and unlocked regions (written at checkpoints, deaths and when leaving a rc).
+' Records, discoveries and unlocked regions (written at checkpoints, deaths and when leaving a run).
 sub GameSaveProgress()
     g = m.game
     w = g.w

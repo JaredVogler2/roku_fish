@@ -5,7 +5,7 @@
 '   * only creatures in a bubble around the camera are fully simulated ("active"); the rest of
 '     the region drifts along coarse waypoints a few times a minute and wakes up as you approach
 '   * timers are absolute times, so idle creatures cost nothing
-'   * AI decisions rc at 6 Hz per creature, staggered; steering and collision rc every tick
+'   * AI decisions run a few times a second per creature, staggered; steering and collision run on each creature's own period
 ' Order per tick: player -> reef passes -> activation -> AI think -> steer / lunge / integrate
 ' -> abilities -> cleaning -> discovery -> effects -> spawner -> cull -> mode.
 ' ============================================================================

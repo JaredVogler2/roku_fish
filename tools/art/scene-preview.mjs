@@ -127,10 +127,11 @@ function drawLayer(si, layer) {
     if (!spr) continue;
     const tc = a[6] >= 0 ? tints[a[6]] : [255, 255, 255, 255];
     // scenery is lit by its own depth, so tall formations shade smoothly from sunlit to deep
-    const li = lightFor(DL, Math.min(2.3, Math.max(0, (40.5 - a[2]) / 13.5 - 0.5)), sec.biome);
+    // (living things keep more of their colour in deep water - same rule as SceneLoad on the device)
+    const li = lightFor(DL, Math.min(2.3, Math.max(0, (40.5 - a[2]) / 13.5 - 0.5)) * (layer === 'flora' || layer === 'front' || (a[9] & 2) ? 0.55 : 1), sec.biome);
     const rgb = [0, 1, 2].map((i) => Math.min(255, Math.round(tc[i] * li[i])));
     const k = view.ppu / spr.len;
-    const sx = a[3] * k * (a[9] === 1 ? -1 : 1);
+    const sx = a[3] * k * (a[9] & 1 ? -1 : 1);
     const sy = a[4] * k;
     for (const p of spr.parts) {
       const img = tinted(p[0], p[1], p[2], p[3], p[4], rgb);

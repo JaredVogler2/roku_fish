@@ -5,9 +5,20 @@
  *
  * Same look as fish.mjs (shared light rig in lib/light.mjs, linear light, filmic tone curve), but the
  * animals are composed from a small set of lit primitives drawn back to front on a supersampled
- * surface: round tapered tubes, ellipsoids, arbitrary height fields, oblique ("seen from slightly
- * above") height fields, polygons and glossy eyes. Each animal is authored in model units where 1 is
- * its body length (x right, y UP, origin = sprite origin) and split into a few rigid rig parts.
+ * surface (Painter): round tapered tubes, ellipsoids, arbitrary height fields, oblique height fields
+ * ("seen from slightly above": rays and sea stars), polygons and glossy eyes.
+ *
+ * Authoring conventions
+ *  - Model units: 1 = the species' body length (its longest natural dimension), x right, y UP,
+ *    origin = sprite origin, animals face +x. Whiskers and antennae may reach beyond the unit box.
+ *  - anchor 'center' (swimmers, drifters): origin = middle of the animal, nose/front at x = +0.5.
+ *    anchor 'base' (seabed animals): the ground line is y = 0 with the origin under the middle of the
+ *    animal (for the burrowing worm: the burrow mouth); bases dip a few pixels below it and a soft
+ *    contact shadow is baked into the rear-most static part.
+ *  - Every sprite is a small rig of rigid parts (Rig.add) listed back to front; pivots sit on the
+ *    anatomical joint. Phases are radians (PH2..PH5 spread parts evenly over a cycle); `bob`
+ *    amplitudes are in authored pixels and scale with opts.px.
+ *  - Everything is deterministic: noise seeds and the placement PRNG derive from the species id.
  */
 import fs from 'node:fs';
 import {
@@ -26,9 +37,6 @@ const smax = (a, b, k) => {
   const h = clamp(0.5 + (0.5 * (a - b)) / k);
   return lerp(b, a, h) + k * h * (1 - h);
 };
-const smin = (a, b, k) => -smax(-a, -b, k);
-const rot2 = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
-const bump01 = (v, a, b, w) => smoothstep(a - w, a + w, v) * smoothstep(b + w, b - w, v);
 const gauss = (v, w) => Math.exp(-(v * v) / (w * w));
 /** Tilt a unit normal in place (bump detail). */
 function nudge(n, dx, dy) {
@@ -455,7 +463,7 @@ class Painter {
       }
       if (!hit) return false;
       if (za !== zb)
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 8; i++) {
           const zm = (za + zb) / 2;
           if ((sy + zm * se) / ce - h(X, zm) <= 0) zb = zm;
           else za = zm;
@@ -648,12 +656,15 @@ function stack(bottom, top) {
 // ---------------------------------------------------------------------------- rig assembly
 class Rig {
   /**
-   * @param ext [x0, y0, x1, y1] drawing area in model units around the origin (generous; parts are cropped)
+   * @param lenPx authored pixels per body length (opts.px overrides it)
+   * @param ext   [x0, y0, x1, y1] drawing area in model units around the origin (generous; parts are cropped)
+   * @param span  model units that make up one body length (1 unless the drawing overshoots the unit box)
    */
-  constructor(id, opts, lenPx, ext) {
+  constructor(id, opts, lenPx, ext, span = 1) {
     this.id = id;
     this.sp = BY_ID.get(id);
-    this.S = opts.px ?? lenPx;
+    this.lenPx = opts.px ?? lenPx;
+    this.S = this.lenPx / span; // pixels per model unit
     this.ss = opts.ss ?? 3;
     const S = this.S;
     const L = Math.ceil(-ext[0] * S) + 2;
@@ -696,7 +707,7 @@ class Rig {
     return this;
   }
   done(anchor) {
-    return { lenPx: this.S, anchor, parts: this.parts };
+    return { lenPx: this.lenPx, anchor, parts: this.parts };
   }
 }
 
@@ -719,10 +730,11 @@ function groundShadow(P, cx, hw, depth = 0.02, alpha = 0.34) {
  */
 const seat = (x, y, hw, d = 0.022) => smoothstep(0, 0.014, y + d * Math.sqrt(Math.max(0, 1 - (x / hw) * (x / hw))));
 
-// Phase offsets that stay well spread whether the device reads them as radians or as cycles.
-const PH2 = [0, 3.5];
-const PH3 = [0, 2.6, 4.3];
-const PH4 = [0, 1.25, 3.5, 4.75];
+// Phase offsets (radians, as the device adds them inside sin()) that spread 2..5 parts evenly over a cycle.
+const PH2 = [0, PI];
+const PH3 = [0, TAU / 3, (2 * TAU) / 3];
+const PH4 = [0, PI / 2, PI, (3 * PI) / 2];
+const PH5 = [0, 1, 2, 3, 4].map((k) => (k * TAU * 2) / 5 % TAU); // neighbours two steps apart
 
 // ---------------------------------------------------------------------------- the animals
 const BUILDERS = {};
@@ -734,7 +746,7 @@ BUILDERS.reefCrab = (id, opts) => {
   const shell = (x, y) => {
     const n = organic(x * 7, y * 7, seed, 4) * 0.7 + organic(x * 19, y * 19, seed + 5, 2) * 0.3;
     let c = mix3(A, B, smoothstep(0.5, 0.68, n) * 0.6);
-    c = mix3(c, C, smoothstep(0.47, 0.3, n) * 0.45);
+    c = mix3(c, C, smoothstep(0.48, 0.3, n) * 0.55);
     return c;
   };
   const legMat = (dark) => (t, s) => {
@@ -803,11 +815,11 @@ BUILDERS.reefCrab = (id, opts) => {
       // mouth frame: two plates meeting in the middle, sunk a little below the rim
       const plate = smoothstep(0.062, 0.05, Math.abs(x)) * smoothstep(0.09, 0.105, y) * smoothstep(-0.008, -0.02, dr);
       c = mix3(c, mix3(A, B, 0.55), plate * 0.75);
-      c = mul3(c, 1 - 0.4 * smoothstep(0.005, 0.001, Math.abs(x)) * plate);
-      c = mul3(c, 1 - 0.3 * smoothstep(0.016, 0.004, Math.abs(Math.abs(x) - 0.058)) * smoothstep(0.085, 0.1, y) * smoothstep(0.0, -0.02, dr));
+      c = mul3(c, 1 - 0.35 * smoothstep(0.005, 0.001, Math.abs(x)) * plate);
+      c = mul3(c, 1 - 0.2 * smoothstep(0.016, 0.004, Math.abs(Math.abs(x) - 0.058)) * smoothstep(0.085, 0.1, y) * smoothstep(0.0, -0.02, dr));
       const fw = worley(x * 55, y * 55, seed + 12);
       c = mul3(c, 0.93 + 0.1 * smoothstep(0.1, 0.35, fw.f1));
-      c = mul3(c, 0.8 + 0.25 * smoothstep(-0.09, -0.01, dr));
+      c = mul3(c, 0.66 + 0.3 * smoothstep(-0.09, -0.01, dr));
       nudge(n, 0, 0.75 * smoothstep(0.0, -0.03, dr));
     }
     return c;
@@ -818,7 +830,7 @@ BUILDERS.reefCrab = (id, opts) => {
     body.darken([bx - 0.04, 0.15, bx + 0.04, 0.23], (x, y) => 0.45 * smoothstep(0.03, 0.008, Math.hypot(x - bx, (y - rimY(bx) - 0.004) * 1.4)));
     const ry0 = rimY(bx);
     body.tube([[bx, ry0 - 0.002, 0.016], [bx + side * 0.003, ry0 + 0.02, 0.014], [bx + side * 0.006, ry0 + 0.04, 0.015]], () => mix3(A, B, 0.35), { gloss: 0.3 });
-    body.eye(bx + side * 0.008, ry0 + 0.056, 0.027, { pupil: 'all', iris: [0.2, 0.08, 0.04] });
+    body.eye(bx + side * 0.008, ry0 + 0.054, 0.0235, { pupil: 'all', iris: [0.2, 0.08, 0.04] });
   }
   // ---- claws
   const claw = (side, k, tilt) => {
@@ -878,8 +890,8 @@ BUILDERS.reefCrab = (id, opts) => {
   const [cl, shL] = claw(-1, 0.94, 0.2);
   const [cr, shR] = claw(1, 1.0, 0.26);
   const sc = S / 240;
-  R.add(legsA, [0, 0.14], { kind: 'bob', amp: 1.6 * sc, rate: 2.2, phase: PH2[0] });
-  R.add(legsB, [0, 0.14], { kind: 'bob', amp: 1.6 * sc, rate: 2.2, phase: PH2[1] });
+  R.add(legsA, [0, 0.14], { kind: 'bob', amp: 1.5 * sc, rate: 1.8, phase: PH2[0] });
+  R.add(legsB, [0, 0.14], { kind: 'bob', amp: 1.5 * sc, rate: 1.8, phase: PH2[1] });
   R.add(body, [0, 0.2], null);
   R.add(cl, shL, { kind: 'flap', amp: 5, rate: 0.45, phase: PH2[0] });
   R.add(cr, shR, { kind: 'flap', amp: 6, rate: 0.45, phase: PH2[1] });
@@ -982,7 +994,7 @@ BUILDERS.blueStar = (id, opts) => {
   }, { y0: yc, gloss: 0.3, sheen: 0.2, steps: 8, ao: (X, Z, Y) => 0.55 + 0.45 * smoothstep(0.0, 0.03, Y) });
   let img = P.resolve();
   img = stack(dropShadow(img, 0, Math.round(S * 0.012), S * 0.012, 0.42), img);
-  starParts(R, img, yc, angles, (i) => i, 0.1, 0.135, 0.12, PH4.concat([2.2]).map((ph) => ({ kind: 'sway', amp: 2.4, rate: 0.22, phase: ph })));
+  starParts(R, img, yc, angles, (i) => i, 0.1, 0.135, 0.12, PH5.map((ph) => ({ kind: 'sway', amp: 2.4, rate: 0.22, phase: ph })));
   return R.done('base');
 };
 
@@ -1068,7 +1080,7 @@ BUILDERS.brittleStar = (id, opts) => {
     for (let k = 0; k <= NS; k++) {
       const u = k / NS;
       const [sx, sy] = scr(X, Z);
-      ctrl.push([sx, sy, 0.0165 * Math.pow(1 - u, 0.75) + 0.0035]);
+      ctrl.push([sx, sy, 0.019 * Math.pow(1 - u, 0.75) + 0.0038]);
       ang += (a1 * Math.sin(u * 4.4 + ph) * 0.9 + a1 * u * u * 1.6) * (1 / NS) * 2.2;
       X += Math.cos(ang) * (L / NS);
       Z += Math.sin(ang) * (L / NS);
@@ -1101,7 +1113,7 @@ BUILDERS.brittleStar = (id, opts) => {
     layers.push({ img, depth: Math.sin(th), piv: scr(Math.cos(th) * 0.07, Math.sin(th) * 0.07) });
   }
   layers.sort((a, b) => a.depth - b.depth);
-  layers.forEach((l, i) => R.add(l.img, l.piv, { kind: 'sway', amp: 3.2, rate: 0.3, phase: PH4.concat([2.2])[i] }));
+  layers.forEach((l, i) => R.add(l.img, l.piv, { kind: 'sway', amp: 3.2, rate: 0.3, phase: PH5[i] }));
   // central disc
   const D = R.layer();
   const dr = 0.092;
@@ -1127,7 +1139,7 @@ BUILDERS.brittleStar = (id, opts) => {
 
 // ---- long-spined urchin -------------------------------------------------------------------------
 BUILDERS.diademaUrchin = (id, opts) => {
-  const R = new Rig(id, opts, 260, [-0.62, -0.08, 0.62, 0.8]);
+  const R = new Rig(id, opts, 240, [-0.62, -0.08, 0.62, 0.8]);
   const { A, B, C, seed, rnd } = R;
   const cx = 0;
   const cy = 0.2;
@@ -1363,7 +1375,7 @@ BUILDERS.seaWasp = (id, opts) => {
   const marginY = (s) => yB + 0.016 * Math.pow(Math.abs(Math.cos(((s - e0) / 1.3) * PI)), 1.5) * 0 + 0.012 * (1 - Math.pow(Math.abs(Math.sin(((s - e0) * PI) / 1.3)), 0.7));
   // ---- bell
   const bell = R.layer();
-  bell.glow(0, 0.33, 0.36, 0.34, glowCol, 0.2, 1.8);
+  bell.glow(0, 0.31, 0.3, 0.3, glowCol, 0.24, 1.7);
   bell.region(-0.22, yB - 0.03, 0.22, yT + 0.01, (x, y, out) => {
     const v0 = (y - yB) / (yT - yB);
     if (v0 > 1 || v0 < -0.1) return false;
@@ -1387,7 +1399,7 @@ BUILDERS.seaWasp = (id, opts) => {
     let base = mix3(B, A, 0.45 + 0.4 * v);
     let c = lit(base, n, 0.9, 0.35, 1);
     c = mix3(c, mul3(saturate(B, 1.25), 1.05), 0.4 * rim);
-    let al = 0.4 + 0.42 * rim;
+    let al = 0.45 + 0.4 * rim;
     // the near and far vertical edges of the box
     const edgeN = gauss(s - e0, 0.045) * smoothstep(0.95, 0.5, v) * smoothstep(-0.02, 0.1, v);
     const edgeF = gauss(s + e0 * 0.85, 0.035) * smoothstep(0.9, 0.4, v) * smoothstep(0.0, 0.12, v);
@@ -1535,6 +1547,16 @@ BUILDERS.plankton = (id, opts) => {
       if (dots.some((d) => Math.hypot(d.x - x, d.y - y) < 0.045)) continue;
       dots.push({ x, y, r: 0.0085 + 0.012 * rnd() * rnd() + (li === 2 ? 0.003 : 0), a: rnd() * TAU, kind: rnd() < 0.55 ? 1 : 0, hue: rnd() });
     }
+    // distant specks give the cloud depth
+    for (let k = 0; k < 16; k++) {
+      const a = rnd() * TAU;
+      const r = 0.44 * Math.sqrt(rnd());
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r * 0.9;
+      const rr = 0.0045 + 0.003 * rnd();
+      P.glow(x, y, rr * 3.2, rr * 3.2, mix3(A, C, 0.4), 0.22, 2);
+      P.glow(x, y, rr, rr, mix3(A, B, 0.35), 0.85, 0.6);
+    }
     for (const d of dots) {
       const body = mix3(A, C, d.hue * 0.8);
       const hot = mix3(B, [1, 0.95, 0.8], 0.4);
@@ -1551,7 +1573,7 @@ BUILDERS.plankton = (id, opts) => {
           line([[hx, hy, d.r * 0.16], [hx - sa * sd * L * 0.9 - ca * L * 0.25, hy + ca * sd * L * 0.9 - sa * L * 0.25, d.r * 0.07]], 0.85);
         }
         line([[d.x - ca * L * 0.5, d.y - sa * L * 0.5, d.r * 0.22], [d.x - ca * L * 1.25, d.y - sa * L * 1.25, d.r * 0.07]], 0.9);
-        P.tube([[hx, hy, d.r * 0.62], [d.x, d.y, d.r * 0.56], [d.x - ca * L * 0.55, d.y - sa * L * 0.55, d.r * 0.22]], (t, sN, x, y, qn) => {
+        P.tube([[hx, hy, d.r * 0.68], [d.x, d.y, d.r * 0.6], [d.x - ca * L * 0.55, d.y - sa * L * 0.55, d.r * 0.22]], (t, sN, x, y, qn) => {
           const c = mix3(hot, body, smoothstep(0.0, 0.8, qn) * 0.9 + 0.1);
           return [c[0], c[1], c[2], 1];
         }, { raw: true });
@@ -1576,7 +1598,7 @@ BUILDERS.plankton = (id, opts) => {
 
 // ---- magnificent anemone ------------------------------------------------------------------------------
 BUILDERS.seaAnemone = (id, opts) => {
-  const R = new Rig(id, opts, 300, [-0.7, -0.07, 0.7, 0.74]);
+  const R = new Rig(id, opts, 300, [-0.7, -0.07, 0.7, 0.74], 1.14);
   const { A, B, C, seed, rnd } = R;
   const colCol = hex('#b0389a');
   const yD = 0.275; // height of the oral disc
@@ -2101,7 +2123,8 @@ BUILDERS.electricRay = (id, opts) => {
     const w = worley(X * 15, Z * 15, seed + 2);
     c = mix3(c, mul3(C, 0.75), smoothstep(0.3, 0.16, w.f1) * (w.id > 0.55 ? 0.75 : 0));
     c = mix3(c, B, smoothstep(0.16, 0.07, w.f1) * (w.id < 0.3 ? 0.7 : 0));
-    return c;
+    // the cool water light greys brown skin: push the warmth back in
+    return saturate([c[0] * 1.08, c[1] * 0.98, c[2] * 0.88], 1.45);
   };
   const box = [-0.27, -b * RAY_SE - 0.06, Xc + a + 0.02, b * RAY_SE + 0.11];
   const bound = (x, y) => x < Xc - 0.2 ? Math.abs(y) < 0.12 : Math.pow((x - Xc) / (a + 0.015), 2) + Math.pow((y - 0.03) / (b * RAY_SE + 0.075), 2) < 1;
@@ -2191,7 +2214,7 @@ BUILDERS.guitarfish = (id, opts) => {
   const h = (X, Z) => {
     const w = Math.max(1e-4, wOut(X));
     const az = Math.abs(Z);
-    const wt = Math.max(1e-4, wTrunk(X));
+    const wt = Math.min(w, Math.max(1e-4, wTrunk(X))); // never wider than the outline, or the edge would be a wall
     const ht = hTrunk(X);
     const qp = 1 - Math.pow(az / w, 2.6);
     const plate = 0.016 * Math.pow(Math.max(0, qp), 0.8) * smoothstep(0.5, 0.42, X);
@@ -2204,7 +2227,7 @@ BUILDERS.guitarfish = (id, opts) => {
   const inside = (X, Z) => X < 0.5 && X > -0.47 && Math.abs(Z) < wOut(X);
   // the flank is steep: unwrap it so the markings do not stretch
   const unwrap = (X, Z) => {
-    const wt = Math.max(1e-4, wTrunk(X));
+    const wt = Math.min(Math.max(1e-4, wOut(X)), Math.max(1e-4, wTrunk(X)));
     const az = Math.abs(Z);
     return Math.sign(Z) * (az < wt ? wt * Math.asin(az / wt) * (1 + 0.6 * hTrunk(X) / wt) : az + wt * 0.57 * (1 + 0.6 * hTrunk(X) / wt));
   };
@@ -2219,9 +2242,9 @@ BUILDERS.guitarfish = (id, opts) => {
     c = mix3(c, B, smoothstep(0.2, 0.11, w.f1) * (w.id > 0.35 ? 0.9 : 0) * smoothstep(0.3, 0.16, X));
     const bl = Math.hypot((X - 0.1) / 0.03, (az - 0.085) / 0.022);
     c = mix3(c, mul3(C, 0.45), smoothstep(1.0, 0.5, bl) * 0.85);
-    c = mix3(c, B, smoothstep(0.35, 0.2, Math.abs(bl - 1.45)) * (0.5 + 0.5 * Math.cos(Math.atan2(az - 0.085, X - 0.1) * 5)) * 0.8);
+    c = mix3(c, B, smoothstep(0.35, 0.2, Math.abs(bl - 1.5)) * smoothstep(0.55, 0.85, Math.cos(Math.atan2((az - 0.085) / 0.022, (X - 0.1) / 0.03) * 5 + 0.6)) * 0.9);
     c = mul3(c, 1 - 0.16 * gauss(Z, 0.014) * smoothstep(0.45, 0.2, X));
-    return c;
+    return saturate([c[0] * 1.05, c[1] * 0.99, c[2] * 0.92], 1.25);
   };
   const P = R.layer();
   const box = [-0.5, -0.19, 0.52, 0.2];
@@ -2231,7 +2254,8 @@ BUILDERS.guitarfish = (id, opts) => {
     const poly = smoothPoly(pts, 2);
     P.poly(poly, (x, y, d, out) => {
       const edge = smoothstep(0.014, 0.0, d);
-      const fc = mix3(mul3(A, 0.84), C, 0.25 + 0.3 * organic(x * 14, y * 14, seed + 7, 2));
+      const f0 = mix3(mul3(A, 0.84), C, 0.25 + 0.3 * organic(x * 14, y * 14, seed + 7, 2));
+      const fc = saturate([f0[0] * 1.05, f0[1] * 0.99, f0[2] * 0.92], 1.25);
       let c = lit(mul3(fc, k), norm3([-0.15 - edge * 0.3, 0.0 + edge * 0.4, 0.95]), 0.25, 0.16, 1);
       c = mix3(c, mul3(A, 1.2), 0.3 * edge);
       c = mul3(c, 0.93 + 0.07 * Math.cos((x * 1.5 + y) * 260));
@@ -2403,7 +2427,7 @@ BUILDERS.reefShrimp = (id, opts) => {
 };
 
 BUILDERS.cleanerShrimp = (id, opts) => {
-  const R = new Rig(id, opts, 240, [-0.78, -0.34, 0.98, 0.78]);
+  const R = new Rig(id, opts, 210, [-0.78, -0.34, 0.98, 0.78]);
   const { A, B, C, seed } = R;
   const red = B;
   const white = mix3(A, [1, 1, 1], 0.3);
@@ -2493,13 +2517,15 @@ BUILDERS.cleanerShrimp = (id, opts) => {
 };
 
 BUILDERS.paintedLobster = (id, opts) => {
-  const R = new Rig(id, opts, 300, [-0.64, -0.06, 0.98, 1.06]);
+  const R = new Rig(id, opts, 280, [-0.64, -0.06, 0.98, 1.06]);
   const { A, B, C, seed, rnd } = R;
   const pinkish = hex('#e9a7b5');
   const spine = spline([[-0.36, 0.175, 0.055], [-0.28, 0.235, 0.076], [-0.16, 0.275, 0.09], [-0.03, 0.292, 0.098], [0.1, 0.295, 0.104], [0.24, 0.29, 0.108], [0.36, 0.285, 0.098], [0.44, 0.283, 0.07]], 8);
   const legCol = (i, t) => {
+    const blue = mix3(C, [0.1, 0.3, 0.75], 0.35);
+    if (i === 2) return mix3(blue, B, 0.12); // the pointed foot is plain
     const bands = fract(t * (i === 0 ? 2.2 : 2.6) + i * 0.35);
-    return mix3(mix3(C, [0.1, 0.3, 0.75], 0.35), B, smoothstep(0.42, 0.5, bands) * smoothstep(1.0, 0.92, bands));
+    return mix3(blue, B, smoothstep(0.42, 0.5, bands) * smoothstep(1.0, 0.92, bands));
   };
   const legs = (P, far) => {
     for (let i = 0; i < 5; i++) {
@@ -2531,9 +2557,11 @@ BUILDERS.paintedLobster = (id, opts) => {
     const ang = PI + 0.3 + da;
     const ex = fanAt[0] + Math.cos(ang) * len;
     const ey = Math.max(0.0, fanAt[1] + Math.sin(ang) * len);
-    body.tube([[fanAt[0] + 0.03, fanAt[1] + 0.01, wdt * 0.6], [lerp(fanAt[0], ex, 0.6), lerp(fanAt[1], ey, 0.6), wdt], [ex, ey, wdt * 0.6]], (t, sN) => {
+    body.tube([[fanAt[0] + 0.03, fanAt[1] + 0.01, wdt * 0.6], [lerp(fanAt[0], ex, 0.6), lerp(fanAt[1], ey, 0.6), wdt], [ex, ey, wdt * 0.6]], (t, sN, x, y, n) => {
       let c = mix3(A, C, 0.45 + 0.3 * t);
-      c = mix3(c, B, smoothstep(0.86, 0.95, t) * 0.9);
+      // thin white margin round the end of each plate
+      const q = Math.sqrt(Math.max(0, 1 - n[2] * n[2])) / 0.3;
+      c = mix3(c, B, smoothstep(0.8, 0.97, t) * smoothstep(0.62, 0.86, q) * 0.95);
       return mul3(c, 0.9 + 0.12 * Math.cos(sN * 8));
     }, { round: 0.3, gloss: 0.45, dim: dm, edge: 0.15 });
   }
@@ -2587,7 +2615,7 @@ BUILDERS.paintedLobster = (id, opts) => {
   legs(legsNear, false);
   const antNear = R.layer();
   antenna(antNear, [[0.45, 0.3], [0.56, 0.35], [0.74, 0.43], [0.88, 0.58], [0.92, 0.77], [0.84, 0.95]], false);
-  const sc = R.S / 300;
+  const sc = R.S / 280;
   R.add(antFar, [0.45, 0.325], { kind: 'sway', amp: 4, rate: 0.35, phase: PH2[0] });
   R.add(legsFar, [0.2, 0.18], { kind: 'bob', amp: 1.5 * sc, rate: 1.6, phase: PH2[0] });
   R.add(body, [0, 0.25], null);
@@ -2982,7 +3010,8 @@ BUILDERS.barrelSponge = (id, opts) => {
     const hw = hwAt(x, y);
     const sN = x / hw;
     if (Math.abs(sN) >= 1) return -1;
-    const yTop = YT - Ro * KE * Math.sqrt(Math.max(0, 1 - Math.pow(x / Ro, 2))) * 0.98;
+    // tucked a little under the rim ring (drawn afterwards) so no pinholes open between the two
+    const yTop = YT - Ro * KE * Math.sqrt(Math.max(0, 1 - Math.pow(x / Ro, 2))) * 0.98 + 0.01 * smoothstep(0.99, 0.88, Math.abs(x) / Ro);
     if (y > yTop) return -1;
     const lon = Math.asin(sN);
     let z = hw * Math.cos(lon) * 0.85;
@@ -3110,7 +3139,7 @@ BUILDERS.bitterSponge = (id, opts) => {
 
 // ---- turf algae ------------------------------------------------------------------------------------------------
 BUILDERS.turfAlgae = (id, opts) => {
-  const R = new Rig(id, opts, 220, [-0.62, -0.06, 0.62, 0.46]);
+  const R = new Rig(id, opts, 220, [-0.62, -0.06, 0.62, 0.46], 1.18);
   const { A, B, C, seed, rnd } = R;
   // dense dark cushion under the filaments
   const mound = R.layer();
@@ -3247,12 +3276,19 @@ BUILDERS.coralPolyps = (id, opts) => {
 };
 
 // ---------------------------------------------------------------------------- module contract
+/** The species drawn by this module (everything in species.json that is not a fish body plan). */
 export const IDS = [
   'cuttlefish', 'bluespottedRay', 'electricRay', 'guitarfish', 'yellowSeahorse', 'seaWasp', 'plankton', 'cleanerShrimp',
   'reefCrab', 'reefShrimp', 'paintedLobster', 'brittleStar', 'spiralSnail', 'reefWorm', 'diademaUrchin', 'giantClam', 'seaAnemone',
   'blueStar', 'crownStar', 'seaCucumber', 'nudibranch', 'barrelSponge', 'bitterSponge', 'turfAlgae', 'seagrass', 'coralPolyps',
 ];
 
+/**
+ * Build the rigged sprite for one species.
+ * @param id   one of IDS
+ * @param opts { px?: authored body length in pixels (default per species), ss?: supersampling (default 3) }
+ * @returns SpriteDef { lenPx, anchor, parts: [{ img, pivot, at, anim }] } (see lib/sprite.mjs)
+ */
 export function build(id, opts = {}) {
   const fn = BUILDERS[id];
   if (!fn) throw new Error(`Unknown critter ${id}`);

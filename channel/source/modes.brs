@@ -73,7 +73,7 @@ function TutorialSteps() as object
     return [
         { id: "move", title: "Swim", text: "Use the D-pad to swim to the glowing ring. Hold a direction and your fish turns and accelerates smoothly." }
         { id: "eat", title: "Feed", text: "Swim close to the red plankton cloud and press OK. Your fish chases it and bites. Eating restores energy." }
-        { id: "bars", title: "Energy and health", text: "Turquoise is energy: it drains as you swim. Coral is health: bites, stings and poison lower it. Either one reaching zero ends the rc." }
+        { id: "bars", title: "Energy and health", text: "Turquoise is energy: it drains as you swim. Coral is health: bites, stings and poison lower it. Either one reaching zero ends the run." }
         { id: "hide", title: "Hide!", text: "A lionfish is hunting. Duck into the seagrass or coral nearby and stay still until it gives up." }
         { id: "clean", title: "Get cleaned", text: "You were nicked. Follow the arrow to the cleaning station and hold still - the blue cleaner wrasse will heal you." }
         { id: "grow", title: "Grow", text: "Eat 3 more small meals (worms, shrimp, plankton). Watch your gold growth bar and your fish get bigger." }
@@ -455,7 +455,7 @@ sub TutorialFinish(w as object)
     md.marker = invalid
     md.stepIndex = TutorialSteps().Count() - 1
     w.predatorsCalm = false
-    WorldEmit(w, { ev: "HINT", text: "Tutorial complete! Keep growing - this rc continues as Reef Ascension." })
+    WorldEmit(w, { ev: "HINT", text: "Tutorial complete! Keep growing - this run continues as Reef Ascension." })
     WorldEmit(w, { ev: "TUTORIAL_DONE" })
 end sub
 

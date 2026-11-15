@@ -37,7 +37,7 @@ const MODULES = [
   { name: 'critters', file: 'critters.mjs', group: 'creatures' },
   { name: 'flora', file: 'flora.mjs', group: 'kit' },
   { name: 'rocks', file: 'rocks.mjs', group: 'kit' },
-  { name: 'fx', file: 'fx.mjs', group: 'kit' },
+  { name: 'fx', file: 'fx.mjs', group: 'ui' },
   { name: 'ui', file: 'ui.mjs', group: 'ui' },
 ];
 const ATLAS_MAX = 2048;
@@ -226,6 +226,11 @@ async function main() {
     }
     o.box = [Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1)];
     outSprites[id.toLowerCase()] = o;
+  }
+  // sheets from an earlier build that are no longer referenced would only bloat the package
+  if (!only) {
+    const keep = new Set(atlases.map((a) => a.file));
+    for (const f of fs.readdirSync(OUT)) if (/\.(webp|png)$/.test(f) && !keep.has(f)) fs.rmSync(path.join(OUT, f));
   }
   const json = JSON.stringify({ atlases, sprites: outSprites });
   fs.writeFileSync(path.join(OUT, 'sprites.json'), json);

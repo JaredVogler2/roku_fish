@@ -22,6 +22,7 @@ import { reliefRender, smax } from './lib/relief.mjs';
 
 const PPU = 96;
 const M = 28; // transparent margin around the nominal shape for the irregular silhouette
+const OV = 4; // a cap or tile continues this far into the next piece, so joins never show a hairline
 
 /**
  * Fused boulders: the union of flattened ellipsoid domes scattered on a jittered grid, the way
@@ -126,7 +127,7 @@ function piece(w, h, fn, pivot, extra = {}) {
  * line (things stand on it); the underside is allowed to be ragged.
  */
 function hslice(part, len, th, tile, seed, capR, vary = 0) {
-  const w = len + (part === 'm' ? 0 : M);
+  const w = len + (part === 'm' ? 0 : M) + (part === 'r' ? 0 : OV);
   const h = th + M * 2;
   const cellPx = 64;
   const P = Math.round(tile / cellPx);
@@ -154,13 +155,13 @@ function hslice(part, len, th, tile, seed, capR, vary = 0) {
     }
     if (d <= -2) return false;
     return rockSample(o, d, X, y, cfg);
-  }, ROCK_OPTS), [part === 'l' ? M : 0, M], { nominal: th / PPU });
+  }, ROCK_OPTS), [part === 'l' ? M : 0, M], { nominal: th / PPU, ov: part === 'r' ? 0 : OV });
 }
 
 /** Vertical three-slice piece: nominal left edge at x = M, right edge at x = M + wd. */
 function vslice(part, len, wd, tile, seed, capR, vary = 0) {
   const w = wd + M * 2;
-  const h = len + (part === 'm' ? 0 : M);
+  const h = len + (part === 'm' ? 0 : M) + (part === 'b' ? 0 : OV);
   const cellPx = 64;
   const P = Math.round(tile / cellPx);
   const cw = clamp(wd / 2.1, 44, 130);
@@ -186,7 +187,7 @@ function vslice(part, len, wd, tile, seed, capR, vary = 0) {
     }
     if (d <= -2) return false;
     return rockSample(o, d, x, Y, cfg);
-  }, ROCK_OPTS), [M, part === 't' ? M : 0], { nominal: wd / PPU });
+  }, ROCK_OPTS), [M, part === 't' ? M : 0], { nominal: wd / PPU, ov: part === 'b' ? 0 : OV });
 }
 
 function boulder(seed, squash) {
@@ -257,21 +258,21 @@ function sandTop() {
     const grain = vnoise(x * 0.8, y * 0.8, 77, 0);
     const lip = 9 * Math.sqrt(1 - Math.pow(1 - Math.min(1, d / 9), 2));
     o.d = d;
-    o.h = lip + rip * 2.6 * fade * smoothstep(0, 12, d) + (grain - 0.5) * 1.3;
+    o.h = lip + rip * 4.2 * fade * smoothstep(0, 12, d) + (grain - 0.5) * 1.3;
     const speck = hash2(Math.floor(x / 2), Math.floor(y / 2), 5) > 0.972 ? 0.12 : 0;
-    o.a = 0.86 + (grain - 0.5) * 0.07 - speck + rip * 0.03 * fade;
+    o.a = 0.93 + (grain - 0.5) * 0.07 - speck + rip * 0.04 * fade;
     o.t = 0.03;
     o.g = 0.12;
     o.al = smoothstep(h - 2, h - 58, y);
     return true;
-  }, { pad: 16, aoR: 5, aoK: 0.09, shadow: 14, shadowK: 0.5 }), [0, 26]);
+  }, { pad: 16, aoR: 6, aoK: 0.11, shadow: 16, shadowK: 0.6, key: 1.1, ambient: 0.8 }), [0, 26]);
 }
 function sandFill() {
   return piece(256, 128, (x, y, o) => {
     const grain = vnoise(x * 0.8, y * 0.8, 77, 0);
     const n = fbm(x / 64, y / 64, 3, 12, 4);
     const speck = hash2(Math.floor(x / 2), Math.floor(y / 2), 9) > 0.975 ? 0.08 : 0;
-    const v = 0.72 + (grain - 0.5) * 0.06 + (n - 0.5) * 0.08 - speck;
+    const v = 0.8 + (grain - 0.5) * 0.06 + (n - 0.5) * 0.08 - speck;
     o[0] = v * 1.03;
     o[1] = v;
     o[2] = v * 0.97;

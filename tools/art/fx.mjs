@@ -53,6 +53,18 @@ const BUILD = {
     const a = Math.pow(clamp(1 - d), 1.6) * streak * smoothstep(1.0, 0.25, v) * smoothstep(0.0, 0.06, v) * 0.62;
     return put(o, a);
   }), [0, 0]),
+  // the waterline seen from under water: a bright rippled edge with light spilling down below it.
+  // The pivot row is the surface; everything above it is air (transparent here, the device draws sky).
+  fx_surface: () => one(shade(512, 96, 2, (x, y, o) => {
+    const u = (x / 512) * TAU;
+    const wave = Math.sin(u * 3) * 3.2 + Math.sin(u * 7 + 1.3) * 1.6 + Math.sin(u * 13 + 0.4) * 0.8;
+    const d = y - (20 + wave); // below the surface when positive
+    if (d < -3) return false;
+    const line = Math.exp(-Math.abs(d) / 2.2);
+    const facets = 0.5 + 0.5 * Math.sin(u * 22 + Math.sin(u * 5) * 2 + d * 0.22);
+    const glow = d > 0 ? Math.exp(-d / 22) * (0.42 + 0.3 * facets) : 0;
+    return put(o, clamp(line * 0.95 + glow) * smoothstep(-3, -1, d) * smoothstep(76, 40, d));
+  }), [0, 20]),
   fx_mote: () => one(shade(16, 16, 3, (x, y, o) => put(o, Math.pow(clamp(1 - Math.hypot(x - 8, y - 8) / 7), 1.6)))),
   fx_bubble: () => one(shade(40, 40, 3, (x, y, o) => {
     const d = Math.hypot(x - 20, y - 20) / 17;
@@ -237,7 +249,8 @@ function ridge(w, h, seed, rough) {
     const d = y - top;
     if (d < -1) return false;
     // brighter rim along the skyline, darker toward the base: reads as lit from above
-    const v = clamp(0.62 + 0.38 * Math.exp(-Math.max(0, d) / 26) - 0.22 * clamp(d / h));
+    // (the bottom row is a constant 0.4 so the device can continue the band with a plain rectangle)
+    const v = clamp(0.62 + 0.38 * Math.exp(-Math.max(0, d) / 26) - 0.22 * smoothstep(h * 0.3, h * 0.98, y));
     return put(o, smoothstep(-1, 1, d), [v, v, v]);
   });
   return { lenPx: 96, anchor: 'center', tintable: true, parts: [{ img, pivot: [0, Math.round(h * 0.5)], at: [0, 0], anim: null }] };

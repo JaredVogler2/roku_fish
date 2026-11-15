@@ -12,6 +12,7 @@
  *           flora  corals, sponges, grass and scatter standing on the rock
  *           front  cover drawn over the animals (seagrass fronts, coral veils, cave gloom)
  *         each placement = [sprite, x, y, scaleX, scaleY, rotation, tint, swayAmp, swayRate, flags]
+ *         (flags: 1 = mirrored, 2 = already coloured for its depth, so the device shades it less)
  *         plus one tint table per biome (the kit is neutral; biomes recolour it).
  * Everything is seeded, so the same input always produces the same reef.
  */
@@ -84,7 +85,7 @@ function compose(regionId) {
     }
     return i;
   };
-  const sectors = scene.sectors.map((s) => ({ biome: s.biome, back: [], rock: [], flora: [], front: [] }));
+  const sectors = scene.sectors.map((s) => ({ biome: s.biome, sand: null, back: [], rock: [], flora: [], front: [] }));
   const floorAt = (x) => {
     const fx = (((x % 72) + 72) % 72) / scene.floorRes;
     const i0 = Math.floor(fx) % scene.floor.length;
@@ -102,7 +103,7 @@ function compose(regionId) {
     if (!id || !has(id)) return false;
     const biome = sectors[si].biome;
     const t = o.tint ? tintOf(biome, o.tint, o.alpha ?? 255) : -1;
-    sectors[si][layer].push([nid(id), r2(((x % 72) + 72) % 72), r2(y), r3(sx), r3(sy), r2(o.rot ?? 0), t, r2(o.sway ?? 0), r2(o.rate ?? 0), o.flip ? 1 : 0]);
+    sectors[si][layer].push([nid(id), r2(((x % 72) + 72) % 72), r2(y), r3(sx), r3(sy), r2(o.rot ?? 0), t, r2(o.sway ?? 0), r2(o.rate ?? 0), (o.flip ? 1 : 0) | (o.keep ? 2 : 0)]);
     return true;
   };
   const look = (si) => BIOMES[sectors[si].biome];
@@ -119,8 +120,16 @@ function compose(regionId) {
     const list = b[pal] ?? b.coral;
     return hexRgb(list[Math.floor(r() * list.length) % list.length]);
   };
-  /** Dim, blue-shifted colour for growth behind the play plane. */
-  const backTint = (si, rgb) => mixRgb(scaleRgb(rgb, 0.5), hexRgb(look(si).deepTint), 0.45);
+  /**
+   * Colour for things behind the play plane: aerial perspective, i.e. most of the way to the colour
+   * of the water at that depth (a little darker so the silhouettes still read).
+   */
+  const backTint = (si, rgb, y = 20) => {
+    const b = look(si);
+    const k = Math.pow(clamp(1 - y / 40.5), 0.8);
+    const water = mixRgb(hexRgb(b.waterTop), hexRgb(b.waterDeep), k);
+    return mixRgb(scaleRgb(rgb, 0.7), scaleRgb(water, 0.92), 0.66);
+  };
 
   // ------------------------------------------------------------------ rock
   /** Middle tiles come in two versions that join each other; mix them so long runs do not repeat. */
@@ -131,8 +140,8 @@ function compose(regionId) {
     if (!L || !Mp) return;
     const nominal = L.x?.nominal ?? 1;
     const sy = th / nominal;
-    const capPx = L.parts[0][3] - L.parts[0][5]; // cap length without its margin
-    const tilePx = Mp.parts[0][3];
+    const capPx = L.parts[0][3] - L.parts[0][5] - (L.x?.ov ?? 0); // cap length without its margin and overlap
+    const tilePx = Mp.parts[0][3] - (Mp.x?.ov ?? 0);
     const len = x1 - x0;
     let sxCap = clamp(sy, 0.55, 1.4);
     let capW = (capPx / PPU) * sxCap;
@@ -146,8 +155,7 @@ function compose(regionId) {
       const tileW0 = (tilePx / PPU) * clamp(sy, 0.6, 1.3);
       const n = Math.max(1, Math.round(span / tileW0));
       const tw = span / n;
-      // 1 px of overlap hides rounding gaps between scaled tiles
-      const sxm = (tw * PPU + 1.5) / tilePx;
+      const sxm = (tw * PPU) / tilePx;
       for (let i = 0; i < n; i++) add(si, 'rock', pickMid(fam, x0 + i * 7.31 + top), x0 + capW + i * tw, top, sxm, sy, { tint });
     }
     add(si, 'rock', `${fam}_r`, x1 - capW, top, sxCap, sy, { tint });
@@ -159,9 +167,9 @@ function compose(regionId) {
     if (!T || !Mp) return;
     const nominal = T.x?.nominal ?? 1;
     const sx = wd / nominal;
-    const capPx = T.parts[0][4] - T.parts[0][6];
+    const capPx = T.parts[0][4] - T.parts[0][6] - (T.x?.ov ?? 0);
     const botPx = B ? B.parts[0][4] - 28 : 0;
-    const tilePx = Mp.parts[0][4];
+    const tilePx = Mp.parts[0][4] - (Mp.x?.ov ?? 0);
     const len = top - bottom;
     let syCap = clamp(sx, 0.55, 1.4);
     let capH = (capPx / PPU) * syCap;
@@ -180,7 +188,7 @@ function compose(regionId) {
       const tileH0 = (tilePx / PPU) * clamp(sx, 0.6, 1.3);
       const n = Math.max(1, Math.round(span / tileH0));
       const th = span / n;
-      const sym = (th * PPU + 1.5) / tilePx;
+      const sym = (th * PPU) / tilePx;
       for (let i = 0; i < n; i++) put(pickMid(fam, x0 * 3.7 + i * 5.13), top - capH - i * th, sym);
     }
     if (botH > 0) put(`${fam}_b`, bottom + botH, syCap);
@@ -266,18 +274,16 @@ function compose(regionId) {
     const sand = hexRgb(look(si).sand);
     const dark = hexRgb(look(si).sandDark);
     const x0 = col * 24;
-    // fill first, then the rippled surface strip segment by segment along the height field
-    const fillW = (256 / PPU) * 1.6;
-    for (let x = x0 - 0.2; x < x0 + 24; x += fillW - 0.05) {
-      for (let y = 1.9; y > -1.0; y -= (128 / PPU) * 1.6 - 0.05) add(si, 'rock', 'sand_fill', x, y, 1.6, 1.6, { tint: mixRgb(sand, dark, 0.2) });
-    }
+    // the body of the seabed is a flat fill the device draws itself (one rectangle, any depth);
+    // here only the rippled surface strip, segment by segment along the height field
+    sectors[si].sand = mixRgb(sand, dark, 0.1);
     const seg = 2;
     for (let x = x0; x < x0 + 24 - 0.01; x += seg) {
       const h0 = floorAt(x);
       const h1 = floorAt(x + seg);
       const rot = (Math.atan2(h1 - h0, seg) * 180) / Math.PI;
       const len = Math.hypot(seg, h1 - h0) + 0.14;
-      add(si, 'rock', 'sand_top', x - 0.06, h0, (len * PPU) / 384, 1.25, { tint: mixRgb(sand, dark, 0.1), rot });
+      add(si, 'rock', 'sand_top', x - 0.06, h0, (len * PPU) / 384, 1.25, { tint: mixRgb(sand, dark, 0.1), rot, keep: true });
     }
   }
 
@@ -363,7 +369,7 @@ function compose(regionId) {
     const r = makeRng(hashStr(`${regionId}:surf:${s.id}`));
     const len = s.x1 - s.x0;
     const isFloor = s.kind === 'floor';
-    const n = Math.round(len * (isFloor ? 0.75 : 1.15) * g.density);
+    const n = Math.round(len * (isFloor ? 1.05 : 1.5) * g.density);
     for (let i = 0; i < n; i++) {
       const x = s.x0 + r() * len;
       const y = surfY(s, x);
@@ -371,8 +377,8 @@ function compose(regionId) {
       const list = isFloor || inCave ? g.floor : r() < 0.25 ? g.floor : g.kinds;
       const fam = list[Math.floor(r() * list.length) % list.length];
       const small = fam.startsWith('pebbles') || fam.startsWith('shell') || fam.startsWith('xmas') || fam.startsWith('urchin') || fam.startsWith('barnacle') || fam.startsWith('weed');
-      const sc = small ? 0.8 + r() * 0.5 : 0.42 + r() * 0.5;
-      const rad = small ? 0.22 : 0.45 * sc;
+      const sc = small ? 0.8 + r() * 0.6 : 0.55 + r() * 0.6;
+      const rad = small ? 0.2 : 0.4 * sc;
       if (!free(x, y, rad)) continue;
       const id = variant(fam, r);
       if (!id) continue;
@@ -391,9 +397,71 @@ function compose(regionId) {
         if (fam.startsWith('weed') || fam.startsWith('barnacle')) continue;
         const id = variant(fam, r);
         if (!id) continue;
-        const sc = 1.15 + r() * 0.9;
-        add(si, 'back', id, x, y - 0.25, sc, sc, { tint: backTint(si, paletteTint(si, PALETTE_OF(fam), r)), flip: r() < 0.5 });
+        const sc = 1.3 + r() * 1.1;
+        add(si, 'back', id, x, y - 0.25, sc, sc, { tint: backTint(si, paletteTint(si, PALETTE_OF(fam), r), y), flip: r() < 0.5, keep: true });
       }
+    }
+  }
+
+  // ------------------------------------------------------------------ growth on walls and pillars
+  const wrapD = (d) => (d > 36 ? d - 72 : d < -36 ? d + 72 : d);
+  const solidAt = (x, y) => {
+    if (y < floorAt(x)) return true;
+    for (const q of scene.solids) {
+      if (q.kind === 'circle') {
+        if (Math.hypot(wrapD(x - q.x), y - q.y) < q.r) return true;
+      } else if (q.kind === 'box') {
+        if (Math.abs(wrapD(x - q.x)) < q.hw && Math.abs(y - q.y) < q.hh) return true;
+      } else if (q.kind === 'capsule') {
+        const px = q.ax + wrapD(x - q.ax);
+        const vx = q.bx - q.ax;
+        const vy = q.by - q.ay;
+        const t = clamp(((px - q.ax) * vx + (y - q.ay) * vy) / (vx * vx + vy * vy || 1), 0, 1);
+        if (Math.hypot(px - q.ax - vx * t, y - q.ay - vy * t) < q.r) return true;
+      }
+    }
+    return false;
+  };
+  const WALL = ['coral_fan', 'coral_fan', 'whip', 'coral_soft', 'sponge_tube', 'coral_table', 'coral_encrust', 'coral_branch', 'sponge_vase'];
+  for (const rk of scene.rocks) {
+    if (rk.style === 'hull' || rk.style === 'mast' || rk.style === 'crate' || rk.kind === 'circle') continue;
+    let x0, x1, y0, y1;
+    if (rk.kind === 'box') [x0, x1, y0, y1] = [rk.x - rk.hw, rk.x + rk.hw, rk.y - rk.hh, rk.y + rk.hh];
+    else [x0, x1, y0, y1] = [Math.min(rk.ax, rk.bx) - rk.r, Math.max(rk.ax, rk.bx) + rk.r, Math.min(rk.ay, rk.by) - rk.r, Math.max(rk.ay, rk.by) + rk.r];
+    y0 = Math.max(y0, floorAt((x0 + x1) / 2) + 0.5);
+    const h = y1 - y0;
+    if (h < 2.4) continue;
+    const r = makeRng(rk.seed + 991);
+    const g = GROWTH[sectors[rk.sector].biome];
+    const n = Math.round(h * 0.55 * g.density);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < n; i++) {
+        const y = y0 + 0.7 + r() * (h - 1.6);
+        const x = side < 0 ? x0 + 0.1 : x1 - 0.1;
+        // the base must sit on this formation's face with open water in front of it
+        if (solidAt(x + side * 0.45, y) || solidAt(x + side * 1.0, y + 0.3) || !solidAt(x - side * 0.3, y)) continue;
+        if (insideShelter(x + side * 0.4, y) || !free(x + side * 0.4, y, 0.4)) continue;
+        const fam = WALL[Math.floor(r() * WALL.length) % WALL.length];
+        const id = variant(fam, r);
+        if (!id) continue;
+        const sc = 0.5 + r() * 0.55;
+        // lean out from the wall and up toward the light
+        const lean = fam === 'coral_table' || fam === 'coral_encrust' ? 78 + r() * 10 : 38 + r() * 30;
+        const si2 = sectorOf(x, clamp(y, 0.01, 40.4));
+        const tint = scaleRgb(paletteTint(si2, PALETTE_OF(fam), r), 0.85 + r() * 0.15);
+        if (add(si2, 'flora', id, x, y, sc, sc, { tint, rot: side < 0 ? lean : -lean, flip: r() < 0.5 })) taken.push([x + side * 0.4, y, 0.42 * sc + 0.15]);
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ distant rocks along the seabed
+  for (let col = 0; col < 3; col++) {
+    const si = 6 + col;
+    const r = makeRng(hashStr(`${regionId}:backrock:${col}`));
+    for (let i = 0; i < 7; i++) {
+      const x = col * 24 + 1 + r() * 22;
+      const sc = 0.9 + r() * 1.5;
+      add(si, 'back', variant('boulder', r), x, floorAt(x) + sc * 0.35, sc, sc * (0.7 + r() * 0.2), { tint: backTint(si, rockTint(si, r), 1), flip: r() < 0.5, keep: true });
     }
   }
 
@@ -404,14 +472,14 @@ function compose(regionId) {
     const si = rk.sector;
     const r = makeRng(rk.seed + 77);
     const yb = rk.y - rk.hh;
-    if (yb < 1.2) continue;
+    if (yb < floorAt(rk.x) + 1.4) continue;
     const n = Math.round(rk.hw * 2 * 0.5 * GROWTH[sectors[si].biome].density);
     for (let i = 0; i < n; i++) {
       const x = rk.x - rk.hw + 0.5 + r() * (rk.hw * 2 - 1);
-      if (insideShelter(x, yb - 0.4)) continue;
+      if (insideShelter(x, yb - 0.4) || solidAt(x, yb - 0.5) || yb < floorAt(x) + 1.2) continue;
       const id = variant('hang', r);
       const sc = 0.6 + r() * 0.6;
-      add(sectorOf(x, clamp(yb - 0.05, 0.01, 40.4)), 'flora', id, x, yb + 0.06, sc, sc, { tint: scaleRgb(paletteTint(si, 'sponge', r), 0.8), flip: r() < 0.5, sway: 2, rate: 0.9 + r() * 0.6 });
+      add(sectorOf(x, clamp(yb - 0.05, 0.01, 40.4)), 'flora', id, x, yb + 0.13, sc, sc, { tint: scaleRgb(paletteTint(si, 'sponge', r), 0.8), flip: r() < 0.5, sway: 2, rate: 0.9 + r() * 0.6 });
     }
   }
 

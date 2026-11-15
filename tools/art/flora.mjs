@@ -1,23 +1,34 @@
 /**
- * Reef flora and seabed decoration kit.
+ * Reef flora and seabed decoration kit: corals, sea fans, soft corals, sponges, seagrass, algae,
+ * shells and rubble, pre-rendered as sprites that the device scales, mirrors, sways and tints.
  *
- * Every piece is modelled as real 3D geometry (swept tubes, thick sheets, implicit solids) and
- * rendered by a tiny deferred software renderer: geometry is rasterised into a supersampled
- * G-buffer (depth, normal, albedo, material), screen-space ambient occlusion and a soft key-light
- * shadow are derived from the depth buffer, and every sample is shaded with the shared light rig
- * (lib/light.mjs) so the scenery sits in the same water as the fish.
+ *   export const IDS            every sprite id (`<family>_<n>`, see KIT at the end of the file)
+ *   export function build(id, { ss = 3 })  ->  SpriteDef (lib/sprite.mjs), deterministic per id
  *
- * Most pieces are TINTABLE: they are rendered with a neutral albedo, so the bitmap stores shading
- * only (lit tops ~0.9, core shadows ~0.5, crevices never below ~0.3, slightly cool in the shadows)
- * and the device multiplies it by a biome colour. Shells, Christmas-tree worms and the urchin are
- * baked in full colour.
+ * How it is drawn. Every piece is modelled as real 3D geometry in pixels (swept tubes, thick
+ * sheets, implicit solids, height reliefs) and rendered by a small deferred software renderer:
+ * geometry is rasterised into a supersampled G-buffer (depth, normal, albedo, material),
+ * screen-space ambient occlusion and a soft key-light shadow are derived from the depth buffer,
+ * and every sample is shaded with the shared light rig (lib/light.mjs) so the scenery sits in
+ * the same water as the fish. Thin overlapping ribbons (grass blades, leaves, fronds) need real
+ * partial alpha, so they are painted back to front by a separate ribbon painter with the same
+ * lighting.
  *
- * Conventions: 144 px per world unit, origin = attachment point (bottom-centre; top-centre for the
- * hang_* pieces), y up in model space, +z toward the viewer. Geometry lists are in pixels.
+ * Tintable pieces. All but the shells, Christmas-tree worms and the urchin are rendered with a
+ * neutral albedo, so the bitmap stores shading only and the device multiplies it by a biome
+ * colour. The value range is graded for that: surfaces facing the viewer sit near 0.85 and
+ * sunlit tops near 1, shadow sides around 0.5, crevices are lifted so nothing falls below ~0.3,
+ * and shadows keep a slightly cool cast.
+ *
+ * Conventions. 144 px per world unit (seagrass: 320 px = the meadow height). The origin is the
+ * attachment point: bottom-centre for everything that grows up from the ground line, top-centre
+ * for the hang_* pieces. Attached pieces continue ~10 px past that line so the rock art can bury
+ * their foot. Model space is y up with +z toward the viewer. Stony corals are a single static
+ * part; flexible organisms are 1-3 parts that each sway about their base ({ kind: 'sway', amp in
+ * degrees, rate in cycles per second, phase in radians }).
  */
 import {
-  Img, over, blur, crop, bounds, hex, mix3, mul3, add3, mulc, norm3, clamp, lerp, smoothstep, fract, hash2, vnoise, fbm, worley,
-  saturate, tone, lum, rng, hashStr, TAU,
+  Img, over, blur, crop, bounds, hex, mix3, mul3, norm3, clamp, lerp, smoothstep, fract, vnoise, fbm, worley, tone, lum, rng, hashStr, TAU,
 } from './lib/core.mjs';
 import { lit, SKY, GROUND, KEY, RIM } from './lib/light.mjs';
 
@@ -32,7 +43,6 @@ const vscale = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
 const vdot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const vcross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const vlen = (a) => Math.hypot(a[0], a[1], a[2]);
-const vlerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 /** A unit vector perpendicular to d, picked by the generator R. */
 function randPerp(d, R) {
   for (;;) {
@@ -287,11 +297,11 @@ class GBuf {
   }
 
   /**
-   * Splat one sphere of a thick sheet: the surface takes the sheet normal (view space, facing
-   * the viewer) so the sheet shades smoothly; with `edge` > 0 the sphere also rounds over toward
-   * the outward edge direction (ex, ey, ez).
+   * Splat one sphere of a thick sheet: every sample takes the sheet's own normal (view space,
+   * facing the viewer) so a wall of spheres shades as one smooth surface. Free edges are closed
+   * separately with a tube.
    */
-  sheet(cx, cy, cz, r, m, snx, sny, snz, edge = 0, ex = 0, ey = 0, ez = 0) {
+  sheet(cx, cy, cz, r, m, snx, sny, snz) {
     const ss = this.ss;
     const W = this.W;
     const X = cx * ss;
@@ -303,11 +313,11 @@ class GBuf {
     const y0 = Math.max(Math.max(0, Math.ceil(this.clipTop * ss)), Math.floor(Y - R));
     const y1 = Math.min(Math.min(this.H - 1, Math.ceil(Y + R)), Math.floor(this.clipY * ss) - 1);
     const R2 = R * R;
-    const iR = 1 / R;
     const zb = this.z;
     const cut = this.cut;
     const cutTop = this.cutTop;
     const th = 2 * R;
+    const tr = m.tr ?? 0;
     for (let py = y0; py <= y1; py++) {
       const dy = py + 0.5 - Y;
       const row = py * W;
@@ -315,29 +325,14 @@ class GBuf {
         const dx = px + 0.5 - X;
         const d2 = dx * dx + dy * dy;
         if (d2 >= R2) continue;
-        const dz = Math.sqrt(R2 - d2);
-        const zz = Z + dz;
+        const zz = Z + Math.sqrt(R2 - d2);
         const i = row + px;
         if (zz <= zb[i]) continue;
         if ((cut && py + 0.5 > cut[px]) || (cutTop && py + 0.5 < cutTop[px])) continue;
-        let nx = snx;
-        let ny = sny;
-        let nz = snz;
-        if (edge > 0) {
-          const k = Math.max(0, (dx * ex - dy * ey + dz * ez) * iR) * edge;
-          const f = Math.max(0.05, (dx * snx - dy * sny + dz * snz) * iR);
-          nx = snx * f + ex * k;
-          ny = sny * f + ey * k;
-          nz = snz * f + ez * k;
-          const l = 1 / (Math.hypot(nx, ny, nz) || 1);
-          nx *= l;
-          ny *= l;
-          nz *= l;
-        }
         zb[i] = zz;
-        this.nx[i] = nx;
-        this.ny[i] = ny;
-        this.nz[i] = nz;
+        this.nx[i] = snx;
+        this.ny[i] = sny;
+        this.nz[i] = snz;
         this.cr[i] = m.r;
         this.cg[i] = m.g;
         this.cb[i] = m.b;
@@ -346,7 +341,7 @@ class GBuf {
         this.oc[i] = m.o;
         this.th[i] = th;
         this.al[i] = 1;
-        this.tr[i] = m.tr ?? 0;
+        this.tr[i] = tr;
       }
     }
   }
@@ -375,10 +370,10 @@ class GBuf {
         if (z < -1e8) continue;
         const i = py * W + px;
         if (z * ss <= this.z[i]) continue;
-        let zl = zf(x - e, y);
-        let zr = zf(x + e, y);
-        let zd = zf(x, y - e);
-        let zu = zf(x, y + e);
+        const zl = zf(x - e, y);
+        const zr = zf(x + e, y);
+        const zd = zf(x, y - e);
+        const zu = zf(x, y + e);
         // one-sided differences at the silhouette
         const gx = zl < -1e8 ? (zr < -1e8 ? 0 : (zr - z) / e) : zr < -1e8 ? (z - zl) / e : (zr - zl) / (2 * e);
         const gy = zd < -1e8 ? (zu < -1e8 ? 0 : (zu - z) / e) : zu < -1e8 ? (z - zd) / e : (zu - zd) / (2 * e);
@@ -498,15 +493,20 @@ class GBuf {
         if ((this.cut && py + 0.5 > this.cut[px]) || (this.cutTop && py + 0.5 < this.cutTop[px])) continue;
         let z = zFront;
         let hit = false;
-        for (let k = 0; k < maxSteps; k++) {
-          const d = stepFn(x, y, z);
-          if (d < eps) {
+        let last = 1e9;
+        let k = 0;
+        for (; k < maxSteps; k++) {
+          last = stepFn(x, y, z);
+          if (last < eps) {
             hit = true;
             break;
           }
-          z -= d * relax;
+          // a small, slowly growing minimum step keeps grazing rays from stalling
+          z -= Math.max(last * relax, 0.04 + 0.004 * k);
           if (z < zBack) break;
         }
+        // out of steps while skimming a surface: that is a hit, not a hole
+        if (!hit && k === maxSteps && last < 1.2) hit = true;
         if (!hit) continue;
         const Z = z * ss;
         if (Z <= this.z[i]) continue;
@@ -515,9 +515,9 @@ class GBuf {
         const b = sdf(x - e, y - e, z + e);
         const c = sdf(x - e, y + e, z - e);
         const d = sdf(x + e, y + e, z + e);
-        let gx = a - b - c + d;
-        let gy = -a - b + c + d;
-        let gz = -a + b - c + d;
+        const gx = a - b - c + d;
+        const gy = -a - b + c + d;
+        const gz = -a + b - c + d;
         const gl = 1 / (Math.hypot(gx, gy, gz) || 1);
         n[0] = gx * gl;
         n[1] = gy * gl;
@@ -550,6 +550,39 @@ class GBuf {
         this.al[i] = m.a;
         this.tr[i] = m.tr ?? 0;
       }
+    }
+    this.closePinholes(X0, Y0, X1, Y1);
+  }
+
+  /**
+   * Fill isolated empty samples that are almost surrounded by geometry (rays that slipped
+   * through a crease) with their deepest neighbour, so solids never show pin-pricks.
+   */
+  closePinholes(X0, Y0, X1, Y1) {
+    const W = this.W;
+    const z = this.z;
+    const chans = [this.z, this.nx, this.ny, this.nz, this.cr, this.cg, this.cb, this.gl, this.sh, this.oc, this.th, this.al, this.tr];
+    for (let pass = 0; pass < 2; pass++) {
+      const fill = [];
+      for (let py = Math.max(1, Y0); py <= Math.min(this.H - 2, Y1); py++)
+        for (let px = Math.max(1, X0); px <= Math.min(W - 2, X1); px++) {
+          const i = py * W + px;
+          if (z[i] > -1e8) continue;
+          if ((this.cut && py + 0.5 > this.cut[px]) || (this.cutTop && py + 0.5 < this.cutTop[px])) continue;
+          let n = 0;
+          let best = -1;
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+              if (!dx && !dy) continue;
+              const j = i + dy * W + dx;
+              if (z[j] <= -1e8) continue;
+              n++;
+              if (best < 0 || z[j] < z[best]) best = j;
+            }
+          if (n >= 6) fill.push(i, best);
+        }
+      if (!fill.length) break;
+      for (let q = 0; q < fill.length; q += 2) for (const c of chans) c[fill[q]] = c[fill[q + 1]];
     }
   }
 
@@ -732,7 +765,7 @@ function gradeTint(c, gain = 1) {
   let v = 0.66 * gain * Math.pow(l, 1.1);
   if (v > 0.72) v = 0.72 + 0.28 * Math.tanh((v - 0.72) / 0.28);
   v = softFloor(v);
-  const k = (v / l) * 0.5;
+  const k = (v / l) * 0.6;
   return [Math.max(0, v + (c[0] - l) * k), Math.max(0, v + (c[1] - l) * k), Math.max(0, v + (c[2] - l) * k)];
 }
 const gradeColour = (c) => tone(c);
@@ -770,7 +803,6 @@ function despeckle(img, minArea = 14) {
     }
     if (mine.length < minArea) for (const q of mine) kill.push(q);
   }
-  if (!kill.length) return img;
   for (const q of kill) {
     lab[q] = 0;
     d[q * 4] = d[q * 4 + 1] = d[q * 4 + 2] = d[q * 4 + 3] = 0;
@@ -811,7 +843,9 @@ function part(img, px, py, anim = null, at = [0, 0], margin = 3, sit = false) {
   const y1 = b.y1 + margin;
   return { img: crop(img, x0, y0, x1 - x0 + 1, y1 - y0 + 1), pivot: [px - x0, py - y0], at, anim };
 }
-const sway = (amp, rate, phase) => ({ kind: 'sway', amp, rate, phase });
+/** Sway rig entry: +-amp degrees about the part's pivot, rate in cycles per second, phase in radians. */
+const r3 = (v) => Math.round(v * 1000) / 1000;
+const sway = (amp, rate, phase) => ({ kind: 'sway', amp: r3(amp), rate: r3(rate), phase: r3(phase % TAU) });
 const def = (parts, tintable = true, lenPx = UNIT) => ({ lenPx, anchor: 'base', tintable, parts });
 
 // ---------------------------------------------------------------------------- branching skeletons
@@ -830,16 +864,10 @@ function skelBounds(branches) {
   return b;
 }
 /** Scale a skeleton about the origin so it spans targetW x targetH (uniform, fits both). */
-function fitSkel(branches, targetW, targetH, sx = 1) {
+function fitSkel(branches, targetW, targetH) {
   const b = skelBounds(branches);
   const s = Math.min(targetW / (b.x1 - b.x0), targetH / b.y1);
-  for (const br of branches)
-    for (const p of br.pts) {
-      p[0] *= s * sx;
-      p[1] *= s;
-      p[2] *= s;
-      p[3] *= s;
-    }
+  for (const br of branches) for (const p of br.pts) for (let k = 0; k < 4; k++) p[k] *= s;
   return s;
 }
 
@@ -1210,7 +1238,6 @@ function coralBrain(id, v, ss) {
 
 // ---------------------------------------------------------------------------- stony: boulder
 function coralBoulder(id, v, ss) {
-  const R = rng(hashStr(id));
   const seed = hashStr(id) & 1023;
   let lobes;
   let knobs;
@@ -1258,7 +1285,6 @@ function coralBoulder(id, v, ss) {
 
 // ---------------------------------------------------------------------------- stony: encrusting
 function coralEncrust(id, v, ss) {
-  const R = rng(hashStr(id));
   const seed = hashStr(id) & 1023;
   // plates: [x, y, z, rx, rz, tilt about z (rad), lip, phase]
   const plates = v === 1
@@ -1324,7 +1350,7 @@ function coralEncrust(id, v, ss) {
       const wv = worley(x * 0.3 + seed, z * 0.3 + y * 0.2, seed);
       const pap = smoothstep(0.34, 0.12, wv.f1);
       // pale growing edge, growth rings, radial ridges and small papillae on top; plain shade beneath
-      const val = 0.7 + 0.12 * smoothstep(0.1, 0.7, rho) + 0.28 * smoothstep(0.74, 1, rho) + top * (0.06 * ring + 0.07 * ridge * smoothstep(0.2, 0.6, rho) + 0.12 * pap * (1 - smoothstep(0.8, 1, rho)));
+      const val = 0.62 + 0.12 * smoothstep(0.1, 0.7, rho) + 0.3 * smoothstep(0.72, 1, rho) + top * (0.06 * ring + 0.07 * ridge * smoothstep(0.2, 0.6, rho) + 0.12 * pap * (1 - smoothstep(0.8, 1, rho)));
       setGrey(m, val, top ? lerp(0.74, 1, smoothstep(0.1, 0.7, rho)) : lerp(0.5, 0.8, smoothstep(0.4, 1, rho)));
     } else setGrey(m, 0.72, 0.6);
   }, { relax: 0.7, steps: 70, e: 0.3 });
@@ -1397,7 +1423,9 @@ function coralMushroom(id, v, ss) {
       const wv = worley(x * 0.24 + seed, z * 0.24, seed);
       const dot = smoothstep(0.3, 0.1, wv.f1);
       const collar = smoothstep(0.46, 0.3, wv.f1) - dot;
-      setGrey(m, 0.86 + 0.12 * collar - 0.3 * dot + 0.12 * smoothstep(0.75, 1, rho), 1 - 0.25 * dot);
+      // the disc is a little darker in its sunken middle and paler along the frilled margin
+      const mott = fbm(x * 0.07 + seed, z * 0.07, 2, seed) - 0.5;
+      setGrey(m, 0.6 + 0.1 * smoothstep(0.1, 0.7, rho) + 0.17 * smoothstep(0.7, 1, rho) + 0.12 * collar - 0.2 * dot + 0.1 * mott, 1 - 0.25 * dot);
     } else if (cap) {
       // underside of the cap: fine radial pleats, in shadow
       setGrey(m, 0.74, lerp(0.55, 0.85, smoothstep(0.3, 1, rho)));
@@ -1450,7 +1478,7 @@ function coralFire(id, v, ss) {
   const R = rng(hashStr(id));
   const seed = hashStr(id) & 1023;
   // blades: base centre (x, z), length, heading (rad from the x axis), height, lean
-  const N = v === 1 ? 7 : 7;
+  const N = 7;
   const blades = [];
   for (let k = 0; k < N; k++) {
     const f = k / (N - 1);
@@ -1462,6 +1490,10 @@ function coralFire(id, v, ss) {
       // taller, narrower plates whose crests split into blunt fingers; the colony leans
       blades.push({ x: side * 40 + R.range(-6, 6) + 4, z: R.range(-12, 12) - (k % 2) * 9, len: R.range(26, 42), head: side * 0.75 + R.range(-0.5, 0.5), h: (134 - 52 * Math.pow(Math.abs(side + 0.3), 1.6)) * R.range(0.78, 1.04), lean: side * 0.3 + 0.12 + R.range(-0.06, 0.06), lobes: R.range(2.2, 3.4), fork: 1 });
     }
+  }
+  if (v === 1) {
+    // cross plates seen nearly edge-on tie the fan into the box-work typical of blade fire coral
+    for (const [x, z, hgt] of [[-24, 10, 92], [8, 14, 108], [32, 8, 84]]) blades.push({ x: x + R.range(-3, 3), z, len: R.range(22, 30), head: R.range(1.25, 1.75), h: hgt * R.range(0.9, 1.05), lean: x * 0.004, lobes: R.range(1, 1.8), fork: 0 });
   }
   const pitch = 0.12;
   const w = 200;
@@ -1667,7 +1699,7 @@ function whip(id, v, ss) {
   for (let k = 0; k < 5; k++) foot.push([((k + R.range(0.2, 0.8)) / 5 * 2 - 1) * 9, R.range(-8, -6), R.range(-3, 3), R.range(4.5, 6), 0.7]);
   blobs(g, cam, foot, 6, (x, y, z, nn, mm) => setGrey(mm, 0.8, 0.7));
   const img = g.resolve({ ao: [[1.5, 0.5], [5, 0.4]], shadow: [10, 0.4], gain: 1.15 });
-  return def([part(img, cam.ox, cam.oy, sway(1.6 + 0.5 * v, 0.2 + 0.04 * v, R.range(0, 1)))]);
+  return def([part(img, cam.ox, cam.oy, sway(1.5 + 0.4 * v, 0.2 + 0.04 * v, R.range(0, TAU)))]);
 }
 
 // ---------------------------------------------------------------------------- stony: table
@@ -2154,7 +2186,7 @@ function coralFan(id, v, ss) {
   for (let k = 0; k < 6; k++) foot.push([((k + R.range(0.2, 0.8)) / 6 * 2 - 1) * 11, R.range(-8, -6), R.range(-3, 3), R.range(5, 7), 0.7]);
   blobs(g, cam, foot, 7, (x, y, z, n, mm) => setGrey(mm, 0.76, 0.66), { noise: 1.5, freq: 0.25, seed });
   const img = g.resolve({ ao: [[1.6, 0.5], [5, 0.35]], shadow: [10, 0.4], gain: 1.1 });
-  return def([part(img, cam.ox, cam.oy, sway(1.8 + 0.3 * v, 0.2 + 0.03 * v, R.range(0, 1)))]);
+  return def([part(img, cam.ox, cam.oy, sway(1.7 + 0.25 * v, 0.2 + 0.03 * v, R.range(0, TAU)))]);
 }
 
 // ---------------------------------------------------------------------------- soft tree corals
@@ -2294,9 +2326,16 @@ function coralSoft(id, v, ss) {
   const all = sk.limbs.concat(sk.florets.map((f) => ({ pts: [[f.c[0], f.c[1], f.c[2], f.rad + 2.5]] })));
   const b0 = skelBounds(all);
   const sc = Math.min((1.2 * UNIT - 4) / (b0.x1 - b0.x0), (1.1 * UNIT - 2) / b0.y1);
-  for (const l of sk.limbs) for (const q of l.pts) for (let k = 0; k < 4; k++) q[k] *= sc;
+  // a crown that comes out narrow is spread a little sideways (positions only, girths untouched)
+  const wide = clamp((1.2 * UNIT - 6) / ((b0.x1 - b0.x0) * sc), 1, 1.14);
+  for (const l of sk.limbs)
+    for (const q of l.pts) {
+      for (let k = 0; k < 4; k++) q[k] *= sc;
+      q[0] *= wide;
+    }
   for (const f of sk.florets) {
     f.c = vscale(f.c, sc);
+    f.c[0] *= wide;
     f.rad *= Math.sqrt(sc);
   }
   const b = skelBounds(sk.limbs.concat(sk.florets.map((f) => ({ pts: [[f.c[0], f.c[1], f.c[2], f.rad + 3.5]] }))));
@@ -2363,8 +2402,8 @@ function coralSoft(id, v, ss) {
       back.d[i + 1] *= k;
       back.d[i + 2] *= k;
     }
-  const ph = R.range(0, 1);
-  return def([part(back, cam.ox, cam.oy, sway(2.2, 0.22, ph)), part(layers[1], cam.ox, cam.oy, sway(3, 0.22, ph + 0.18))]);
+  const ph = R.range(0, TAU);
+  return def([part(back, cam.ox, cam.oy, sway(2.2, 0.22, ph)), part(layers[1], cam.ox, cam.oy, sway(3, 0.22, ph + 0.9))]);
 }
 
 // ---------------------------------------------------------------------------- ribbon painter
@@ -2601,7 +2640,7 @@ function grassTuft(id, v, ss) {
   blades.sort((a, b) => a.depth - b.depth);
   const parts = [];
   const per = Math.ceil(blades.length / 3);
-  const out = [0, 0, 0, 0];
+  const ph0 = R.range(0, TAU);
   for (let layer = 0; layer < 3; layer++) {
     const group = blades.slice(layer * per, (layer + 1) * per);
     if (!group.length) continue;
@@ -2635,7 +2674,7 @@ function grassTuft(id, v, ss) {
     }
     const img = pt.resolve();
     const gx = Math.round(group.reduce((a, b) => a + (b.path[0].x - ox), 0) / group.length);
-    parts.push(part(img, ox + gx, oy, sway(4.2 + layer * 1.1 + R.range(0, 0.6), 0.27 + layer * 0.045, R.range(0, 1)), [gx, 0]));
+    parts.push(part(img, ox + gx, oy, sway(4.2 + layer * 1.1 + R.range(0, 0.6), 0.27 + layer * 0.045, ph0 + layer * 2.0 + R.range(-0.4, 0.4)), [gx, 0]));
   }
   return def(parts, true, 320);
 }
@@ -2687,7 +2726,6 @@ function tubeCluster(tubes, k, seed, ribs = 0) {
 }
 
 function spongeTube(id, v, ss) {
-  const R = rng(hashStr(id));
   const seed = hashStr(id) & 1023;
   const tubes = v === 1
     ? [
@@ -2841,13 +2879,12 @@ function hang(id, v, ss) {
     }
   }
   const img = g.resolve({ ao: [[1.8, 0.55], [6, 0.6], [14, 0.4]], shadow: [18, 0.45, 0.4], gain: 1.2 });
-  return def([part(img, cam.ox, cam.oy, sway(2, 0.24 + 0.03 * v, R.range(0, 1)))]);
+  return def([part(img, cam.ox, cam.oy, sway(2, 0.24 + 0.03 * v, R.range(0, TAU)))]);
 }
 
 // ---------------------------------------------------------------------------- barnacles
 function barnacle(id, v, ss) {
   const R = rng(hashStr(id));
-  const seed = hashStr(id) & 1023;
   // cones: [x, z, base radius, height, tilt x, tilt z]
   const cones = v === 1
     ? [[-11, -2, 13.5, 17, -0.14, 0], [12, 0, 12, 15, 0.16, 0.05], [0, 11, 8.5, 10.5, 0.02, 0.3], [-25, 6, 7.5, 9, -0.32, 0.2], [26, 8, 7, 8.5, 0.36, 0.2], [-1, -12, 7.5, 12, 0, -0.2]]
@@ -2910,7 +2947,6 @@ function barnacle(id, v, ss) {
 /** A leaf / pinna as a ribbon path with a lighting frame. pts(t) -> [x, y] in canvas px. */
 function leafPath(curve, n, hwAt, psiAt, extra = {}) {
   const path = [];
-  let prev = curve(0);
   for (let i = 0; i <= n; i++) {
     const t = i / n;
     const p = curve(t);
@@ -2927,7 +2963,6 @@ function leafPath(curve, n, hwAt, psiAt, extra = {}) {
     const back = cp < 0;
     const sg = back ? -1 : 1;
     path.push({ x: p[0], y: p[1], hw: hwAt(t) * (Math.abs(cp) * 0.92 + 0.08), t, N: norm3([-Px * sp * sg + (extra.arch ?? 0) * Px, -Py * sp * sg + (extra.arch ?? 0) * Py + 0.12, cp * sg]), B: [Px * cp, Py * cp, sp], back });
-    prev = p;
   }
   return path;
 }
@@ -2967,10 +3002,9 @@ function weed(id, v, ss) {
     for (let k = 0; k < 26; k++) beads.push([R.range(-30, 30), R.range(-4, 5), R.range(-8, 12), R.range(2.6, 4.6)]);
     for (const q of beads) g.ball(cam, q[0], q[1], q[2], q[3], setGrey(m, R.range(0.84, 1.0), lerp(0.62, 1, smoothstep(-6, 22, q[1]))));
     const img = g.resolve({ ao: [[1.6, 0.6], [5, 0.6], [11, 0.4]], shadow: [14, 0.5, 0.4] });
-    return def([part(img, ox, oy, sway(2, 0.3, R.range(0, 1)))]);
+    return def([part(img, ox, oy, sway(2, 0.3, R.range(0, TAU)))]);
   }
   const parts = [];
-  const out = [0, 0, 0, 0];
   const shadeLeaf = (dk, sd) => (p0, p1, f, u, o) => {
     const t = p0.t + (p1.t - p0.t) * f;
     const N = p0.N;
@@ -3015,7 +3049,7 @@ function weed(id, v, ss) {
       const pt = new Paint(w, h, ss);
       const grp = leaves.slice(layer ? 5 : 0, layer ? N : 5);
       for (const lf of grp) pt.ribbon(lf.path, shadeLeaf(layer ? 1 : 0.82, lf.sd), { shadow: [3.5, 0.34] });
-      parts.push(part(pt.resolve(), ox, oy, sway(3 + layer, 0.3 + 0.05 * layer, R.range(0, 1))));
+      parts.push(part(pt.resolve(), ox, oy, sway(3 + layer, 0.3 + 0.05 * layer, 1.3 * layer + R.range(0, 0.6))));
     }
     return def(parts);
   }
@@ -3070,7 +3104,7 @@ function weed(id, v, ss) {
         o[3] = 1;
       }, { shadow: [1.5, 0.2] });
     }
-    parts.push(part(pt.resolve(), ox, oy, sway(3 + layer, 0.32 + 0.05 * layer, R.range(0, 1))));
+    parts.push(part(pt.resolve(), ox, oy, sway(3 + layer, 0.32 + 0.05 * layer, 1.3 * layer + R.range(0, 0.6))));
   }
   return def(parts);
 }
@@ -3147,7 +3181,6 @@ function pebbles(id, v, ss) {
 
 // ---------------------------------------------------------------------------- coloured: shells
 function shell(id, v, ss) {
-  const R = rng(hashStr(id));
   const seed = hashStr(id) & 1023;
   const s4 = Math.max(ss, 4);
   const K = 1.22; // authored small, enlarged to the kit size
@@ -3238,10 +3271,7 @@ function shell(id, v, ss) {
       const dy = y - base[1];
       const dz = z - base[2];
       const t = dx * ax[0] + dy * ax[1] + dz * ax[2];
-      const px = dx - ax[0] * t;
-      const py = dy - ax[1] * t;
-      const pz = dz - ax[2] * t;
-      const ang = Math.atan2(py, pz);
+      const ang = Math.atan2(dy - ax[1] * t, dz - ax[2] * t);
       const spiral = t * 1.25 + ang * 0.45;
       const flame = smoothstep(0.25, 0.6, 0.5 + 0.5 * Math.sin(spiral * 4.2)) * smoothstep(0.35, 0.65, vnoise(ang * 2.4 + t * 0.7, t * 0.9, seed));
       let c = mix3(cream, tan, flame * 0.9);
@@ -3295,7 +3325,6 @@ function shell(id, v, ss) {
 
 // ---------------------------------------------------------------------------- coloured: Christmas-tree worms
 function xmasWorm(id, v, ss) {
-  const R = rng(hashStr(id));
   const s4 = Math.max(ss, 4);
   const w = 56;
   const h = 58;
@@ -3306,8 +3335,11 @@ function xmasWorm(id, v, ss) {
     ? { base: hex('#e2491f'), mid: hex('#ff8a1e'), tip: hex('#ffe066'), tube: hex('#e9dcc6') }
     : { base: hex('#1f4fc4'), mid: hex('#3d8bf0'), tip: hex('#f4f8ff'), tube: hex('#dfe3ea') };
   const m = mat(0, 0, 0, 1, 0.12, 0.16);
-  const crowns = [[-7.5, 0, 26, 8.2, 0.0, 1], [7, 2, 22.5, 7.2, 2.1, -1]];
-  for (const [cx, cz, H, R0, ph, hand] of crowns) {
+  // each worm shows a pair of spiral crowns: [x, z, height, radius, phase, handedness, turns]
+  const crowns = v === 1
+    ? [[-7.5, 0, 26, 8.2, 0.0, 1, 4.6], [7, 2, 22.5, 7.2, 2.1, -1, 4.2]]
+    : [[-7, 2, 21.5, 7.4, 1.0, -1, 3.8], [6.5, 0, 27.5, 8.4, 3.3, 1, 5.0]];
+  for (const [cx, cz, H, R0, ph, hand, turns] of crowns) {
     const lean = cx * 0.012;
     // calcareous tube collar
     for (let k = 0; k < 6; k++) {
@@ -3317,8 +3349,7 @@ function xmasWorm(id, v, ss) {
     // central stalk
     g.tube(cam, [[cx, -1, cz, 1.6], [cx + lean * H, H * 0.9, cz, 0.7]], setRGB(m, mul3(pal.base, 0.8), 0.8));
     // radioles: fine feathery rays set along a descending spiral, longest at the bottom whorl
-    const turns = 4.6;
-    const n = 150;
+    const n = Math.round(turns * 33);
     for (let i = 0; i < n; i++) {
       const t = i / (n - 1);
       const a = ph + hand * t * turns * TAU;
@@ -3403,36 +3434,48 @@ function urchinDecor(id, v, ss) {
 }
 
 // ---------------------------------------------------------------------------- registry
-const BUILDERS = {
-  coral_branch: coralBranch,
-  coral_table: coralTable,
-  coral_fan: coralFan,
-  coral_soft: coralSoft,
-  grass_tuft: grassTuft,
-  coral_brain: coralBrain,
-  coral_boulder: coralBoulder,
-  coral_encrust: coralEncrust,
-  coral_mushroom: coralMushroom,
-  coral_fire: coralFire,
-  coral_pillar: coralPillar,
-  whip,
-  sponge_tube: spongeTube,
-  sponge_vase: spongeVase,
-  hang,
-  barnacle,
-  weed,
-  pebbles,
-  shell,
-  xmas_worm: xmasWorm,
-  urchin_decor: urchinDecor,
-};
-const COUNTS = { coral_branch: 3, coral_table: 2, coral_brain: 2, coral_boulder: 2, coral_encrust: 2, coral_mushroom: 2, coral_fire: 2, coral_pillar: 2, coral_soft: 3, coral_fan: 3, whip: 2, sponge_tube: 2, sponge_vase: 1, hang: 2, barnacle: 2, grass_tuft: 4, weed: 3, pebbles: 3, shell: 3, xmas_worm: 2, urchin_decor: 1 };
+/** Builder and number of variants for each family, in kit order; ids are `<family>_<n>`. */
+const KIT = [
+  // stony corals (static)
+  ['coral_branch', 3, coralBranch],
+  ['coral_table', 2, coralTable],
+  ['coral_brain', 2, coralBrain],
+  ['coral_boulder', 2, coralBoulder],
+  ['coral_encrust', 2, coralEncrust],
+  ['coral_mushroom', 2, coralMushroom],
+  ['coral_fire', 2, coralFire],
+  ['coral_pillar', 2, coralPillar],
+  // flexible corals and gorgonians (sway rigs)
+  ['coral_soft', 3, coralSoft],
+  ['coral_fan', 3, coralFan],
+  ['whip', 2, whip],
+  // sponges and small growths
+  ['sponge_tube', 2, spongeTube],
+  ['sponge_vase', 1, spongeVase],
+  ['hang', 2, hang],
+  ['barnacle', 2, barnacle],
+  // plants (sway rigs)
+  ['grass_tuft', 4, grassTuft],
+  ['weed', 3, weed],
+  // seabed scatter; shells, worms and the urchin are baked in colour
+  ['pebbles', 3, pebbles],
+  ['shell', 3, shell],
+  ['xmas_worm', 2, xmasWorm],
+  ['urchin_decor', 1, urchinDecor],
+];
 
-export const IDS = Object.entries(COUNTS).flatMap(([k, n]) => Array.from({ length: n }, (_, i) => `${k}_${i + 1}`));
+/** Every sprite id this module can build. */
+export const IDS = KIT.flatMap(([name, n]) => Array.from({ length: n }, (_, i) => `${name}_${i + 1}`));
 
+/**
+ * Build one kit sprite.
+ * @param id   one of IDS
+ * @param opts { ss: supersampling factor (default 3) }
+ * @returns SpriteDef (see lib/sprite.mjs); deterministic for a given id
+ */
 export function build(id, opts = {}) {
   const m = /^(.*)_(\d+)$/.exec(id);
-  const fn = m && BUILDERS[m[1]];
-  if (!fn) throw new Error(`Unknown flora sprite ${id}`);
-  return fn(id, Number(m[2]), opts.ss ?? 3);
+  const entry = m && KIT.find(([name, n]) => name === m[1] && Number(m[2]) >= 1 && Number(m[2]) <= n);
+  if (!entry) throw new Error(`Unknown flora sprite ${id}`);
+  return entry[2](id, Number(m[2]), Math.max(1, Math.round(opts.ss ?? 3)));
 }

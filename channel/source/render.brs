@@ -25,7 +25,9 @@ sub CameraInit()
     }
 end sub
 
-' Keep the view inside a sector ("room"); the top row may show a little above the surface.
+' The view frames one sector ("room") at a time, but may look past its edges far enough that the
+' player never has to sit in a screen corner under the HUD: up to 70 % of the half-width sideways
+' and half the half-height up or down. Above the top row that shows sky, below the seabed sand.
 sub CameraClamp(x as float, y as float, sector as integer)
     cam = m.cam
     col = sector MOD 3
@@ -34,23 +36,23 @@ sub CameraClamp(x as float, y as float, sector as integer)
     y0 = (2 - row) * 13.5
     hw = cam.halfW
     hh = cam.halfH
-    if hw * 2 >= 24 then
+    lo = x0 + hw * 0.3
+    hi = x0 + 24 - hw * 0.3
+    if lo >= hi then
         fx = x0 + 12.0
     else
         fx = x0 + DxWrap(x0, x)
-        if fx < x0 + hw then fx = x0 + hw
-        if fx > x0 + 24 - hw then fx = x0 + 24 - hw
+        if fx < lo then fx = lo
+        if fx > hi then fx = hi
     end if
-    top = y0 + 13.5
-    if row = 0 then top = 41.7
-    bottom = y0
-    if row = 2 then bottom = y0 - 0.6
-    if hh * 2 >= top - bottom then
-        fy = (top + bottom) / 2
+    lo = y0 + hh * 0.5
+    hi = y0 + 13.5 - hh * 0.5
+    if lo >= hi then
+        fy = y0 + 6.75
     else
         fy = y
-        if fy < bottom + hh then fy = bottom + hh
-        if fy > top - hh then fy = top - hh
+        if fy < lo then fy = lo
+        if fy > hi then fy = hi
     end if
     m.camWantX = WrapX(fx)
     m.camWantY = fy
@@ -213,7 +215,7 @@ end function
 ' Each placement: [nameIndex, x, y, scaleX, scaleY, rotationDeg, tintIndex, swayAmp, swayRate, flags]
 '   x, y   world units of the sprite's pivot (y up)
 '   scale  1 = the sprite's authored size (its "len" pixels = one world unit)
-'   flags  1 = mirror horizontally
+'   flags  1 = mirror horizontally, 2 = already coloured for its depth (shade it less)
 ' Every piece is lit by its own depth, so a pillar that climbs from the seabed to the shallows
 ' shades smoothly from deep blue to sunlit.
 function SceneLoad(regionId as string) as dynamic
@@ -223,7 +225,7 @@ function SceneLoad(regionId as string) as dynamic
     names = j.names
     canFlip = m.caps.flip
     for each sj in j.sectors
-        sec = { biome: sj.biome, layers: [], n: 0, lightKey: -1 }
+        sec = { biome: sj.biome, layers: [], n: 0, lightKey: -1, sand: sj.sand, sandCol: &h8A8266FF }
         tints = j.tints[LCase(sj.biome)]
         li = 0
         for each lname in ["back", "rock", "flora", "front"]
@@ -242,7 +244,8 @@ function SceneLoad(regionId as string) as dynamic
                         d = ((40.5 - a[2]) / 13.5 - 0.5) * 0.5
                         if d < 0 then d = 0.0
                         if d > 1.15 then d = 1.15
-                        if li >= 2 then d = d * 0.55
+                        flags = a[9]
+                        if li >= 2 or flags >= 2 then d = d * 0.55
                         k = 1.0 / spr.len
                         bx = spr.box
                         mx = MaxF(Abs(bx[0]), Abs(bx[2]))
@@ -259,7 +262,12 @@ function SceneLoad(regionId as string) as dynamic
                             ' radius in world units for culling
                             ext: Sqr(mx * mx + my * my) * MaxF(a[3], a[4]) * k + 0.1
                         }
-                        if a[9] = 1 and canFlip then it.sx = -it.sx
+                        if (flags = 1 or flags = 3) and canFlip then it.sx = -it.sx
+                        ' single-piece growth with its own sway (sea fans, whips) uses it unless the scene says otherwise
+                        if it.sway = 0 and spr.n = 1 and p.k = 4 then
+                            it.sway = p.a
+                            it.rate = p.b * 6.2831853
+                        end if
                         ' sprites built from several parts (seagrass, soft corals) carry a sway rig
                         if spr.n > 1 or p.ax <> 0 or p.ay <> 0 then
                             it.spr = spr
@@ -289,6 +297,11 @@ sub SceneRelight(sec as object, dl as float)
     lr = l[0]
     lg = l[1]
     lb = l[2]
+    if sec.sand <> invalid then
+        ' the seabed body under the rippled strip (matches the strip's shaded lower edge)
+        sd = sec.sand
+        sec.sandCol = Rgba(Int(sd[0] * lr * 0.6), Int(sd[1] * lg * 0.66), Int(sd[2] * lb * 0.72), 255)
+    end if
     for each lst in sec.layers
         for each it in lst
             r = Int(it.tr * lr)
@@ -306,6 +319,7 @@ end sub
 ' Draw one layer of one sector.
 sub SceneDrawLayer(lst as object, camX as float, camY as float, ppu as float, cx as integer, cy as integer, hw as float, hh as float, t as float, canRot as boolean)
     scr = m.screen
+    mips = not m.noMips
     for each it in lst
         dx = it.x - camX
         if dx > 36 then
@@ -322,11 +336,11 @@ sub SceneDrawLayer(lst as object, camX as float, camY as float, ppu as float, cx
                 if it.spr <> invalid then
                     SceneDrawRig(it, cx + Int(dx * ppu), cy - Int(dy * ppu), k, ky, t)
                 else
-                    if ky < 0.3 then
+                    if ky < 0.3 and mips then
                         reg = it.r2
                         k = k * 4
                         ky = ky * 4
-                    else if ky < 0.6 then
+                    else if ky < 0.6 and mips then
                         reg = it.r1
                         k = k * 2
                         ky = ky * 2
@@ -353,7 +367,9 @@ sub SceneDrawRig(it as object, sx as integer, sy as integer, k as float, ky as f
     canRot = m.caps.rotate
     mip = 0
     f = 1.0
-    if ky < 0.3 then
+    if m.noMips then
+        mip = 0
+    else if ky < 0.3 then
         mip = 2
         f = 4.0
     else if ky < 0.6 then
@@ -413,7 +429,9 @@ sub DrawCreature(c as object, sx as integer, sy as integer, ppu as float, col as
     if af < 0.1 then return
     f = 1.0
     mip = 0
-    if k < 0.3 then
+    if m.noMips then
+        mip = 0
+    else if k < 0.3 then
         mip = 2
         f = 4.0
     else if k < 0.6 then

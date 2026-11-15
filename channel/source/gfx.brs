@@ -37,6 +37,54 @@ sub GfxInit()
     m.atlas = invalid
     m.spr = {}
     m.caps = { flip: true, rotate: true, tint: true }
+    m.lowTex = false
+    m.lowFx = false
+    m.noMips = false
+end sub
+
+' ---------------------------------------------------------------- detail level
+' "Low" detail does two things for small devices: creature and scenery sheets are kept at half
+' resolution (a quarter of the texture memory), and the reef draws less decoration.
+' Auto picks Low when the device reports little memory or an old (non-OpenGL) graphics stack.
+sub GfxDetectDetail()
+    want = m.save.settings.detail
+    low = false
+    if want = "low" then
+        low = true
+    else if want <> "high" then
+        di = CreateObject("roDeviceInfo")
+        if di <> invalid then
+            if FindMemberFunction(di, "GetGraphicsPlatform") <> invalid then
+                if di.GetGraphicsPlatform() = "directfb" then low = true
+            end if
+            if FindMemberFunction(di, "GetGeneralMemoryLevel") <> invalid then
+                lvl = di.GetGeneralMemoryLevel()
+                if lvl = "low" or lvl = "critical" then low = true
+            end if
+        end if
+        mm = CreateObject("roAppMemoryMonitor")
+        if mm <> invalid then
+            if FindMemberFunction(mm, "GetChannelAvailableMemory") <> invalid then
+                kb = mm.GetChannelAvailableMemory()
+                if kb > 0 and kb < 160000 then low = true
+            end if
+        end if
+    end if
+    m.lowTex = low
+    m.lowFx = low
+    print "gfx detail: "; want; " -> low="; low
+end sub
+
+' The setting changed while running: decoration follows at once, texture size at the next launch.
+sub GfxApplyDetail()
+    want = m.save.settings.detail
+    if want = "low" then
+        m.lowFx = true
+    else if want = "high" then
+        m.lowFx = false
+    else
+        m.lowFx = m.lowTex
+    end if
 end sub
 
 ' ---------------------------------------------------------------- capability probe
@@ -223,12 +271,17 @@ function GfxLoadNextAtlas() as boolean
         print "GfxLoadNextAtlas: cannot load "; a.file
         m.atlasBmp.Push(invalid)
     else
-        entry = { b0: bmp, b1: invalid, b2: invalid }
-        ' Creature and kit sheets get smaller copies; the UI sheet is always drawn 1:1.
-        if a.group <> "ui" then
-            entry.b1 = GfxHalf(bmp)
-            if entry.b1 <> invalid then entry.b2 = GfxHalf(entry.b1)
+        entry = { b0: bmp, b1: invalid, b2: invalid, half: false }
+        entry.b1 = GfxHalf(bmp)
+        if entry.b1 <> invalid then entry.b2 = GfxHalf(entry.b1)
+        if m.lowTex and a.group <> "ui" and entry.b2 <> invalid then
+            ' keep the half-size sheet as the main one and let the full-size bitmap go
+            entry.b0 = entry.b1
+            entry.b1 = entry.b2
+            entry.b2 = GfxHalf(entry.b1)
+            entry.half = true
         end if
+        if entry.b1 = invalid or entry.b2 = invalid then m.noMips = true
         m.atlasBmp.Push(entry)
     end if
     m.atlasNext = i + 1
@@ -274,25 +327,44 @@ sub GfxBuildSprites()
     for each id in meta.sprites
         s = meta.sprites[id]
         parts = []
+        lenK = 1.0
         for each p in s.parts
             e = m.atlasBmp[p[0]]
             if e <> invalid then
                 x = p[1] : y = p[2] : w = p[3] : h = p[4] : px = p[5] : py = p[6]
                 part = {
-                    r0: GfxMakeRegion(e.b0, x, y, w, h, px, py)
+                    r0: invalid
                     r1: invalid
                     r2: invalid
                     ax: p[7], ay: p[8], k: p[9], a: p[10], b: p[11], c: p[12], d: p[13]
                     w: w, h: h, px: px, py: py
                 }
-                if e.b1 <> invalid then part.r1 = GfxMakeRegion(e.b1, x \ 2, y \ 2, (w + 1) \ 2, (h + 1) \ 2, px \ 2, py \ 2)
-                if e.b2 <> invalid then part.r2 = GfxMakeRegion(e.b2, x \ 4, y \ 4, (w + 3) \ 4, (h + 3) \ 4, px \ 4, py \ 4)
+                if e.half then
+                    ' the sheet is stored at half size: everything measured in sprite pixels halves
+                    lenK = 0.5
+                    part.ax = p[7] / 2.0
+                    part.ay = p[8] / 2.0
+                    if part.k = 1 then part.c = p[12] / 2.0
+                    if part.k = 2 or part.k = 6 then part.a = p[10] / 2.0
+                    part.w = (w + 1) \ 2
+                    part.h = (h + 1) \ 2
+                    part.px = px \ 2
+                    part.py = py \ 2
+                    part.r0 = GfxMakeRegion(e.b0, x \ 2, y \ 2, (w + 1) \ 2, (h + 1) \ 2, px \ 2, py \ 2)
+                    if e.b1 <> invalid then part.r1 = GfxMakeRegion(e.b1, x \ 4, y \ 4, (w + 3) \ 4, (h + 3) \ 4, px \ 4, py \ 4)
+                    if e.b2 <> invalid then part.r2 = GfxMakeRegion(e.b2, x \ 8, y \ 8, (w + 7) \ 8, (h + 7) \ 8, px \ 8, py \ 8)
+                else
+                    part.r0 = GfxMakeRegion(e.b0, x, y, w, h, px, py)
+                    if e.b1 <> invalid then part.r1 = GfxMakeRegion(e.b1, x \ 2, y \ 2, (w + 1) \ 2, (h + 1) \ 2, px \ 2, py \ 2)
+                    if e.b2 <> invalid then part.r2 = GfxMakeRegion(e.b2, x \ 4, y \ 4, (w + 3) \ 4, (h + 3) \ 4, px \ 4, py \ 4)
+                end if
                 if part.r1 = invalid then part.r1 = part.r0
                 if part.r2 = invalid then part.r2 = part.r1
                 if part.r0 <> invalid then parts.Push(part)
             end if
         end for
-        o = { len: s.len, base: s.base, box: s.box, parts: parts, n: parts.Count(), tint: false }
+        o = { len: s.len * lenK, base: s.base, box: s.box, parts: parts, n: parts.Count(), tint: false }
+        if lenK <> 1.0 then o.box = [s.box[0] \ 2, s.box[1] \ 2, s.box[2] \ 2, s.box[3] \ 2]
         if s.tint <> invalid then o.tint = true
         if s.x <> invalid then o.x = s.x
         spr[id] = o
@@ -334,7 +406,9 @@ sub DrawSprWhole(id as string, x as integer, y as integer, scale as float, color
     for each p in s.parts
         r = p.r0
         k = scale
-        if scale < 0.3 then
+        if m.noMips then
+            ' (no smaller copies could be made: always draw from the main sheet)
+        else if scale < 0.3 then
             r = p.r2
             k = scale * 4
         else if scale < 0.6 then

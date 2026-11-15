@@ -168,6 +168,14 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
         for each sec in secs
             SceneDrawLayer(sec.layers[0], camX, camY, ppu, cx, cy, hw, hh, t, canRot)
         end for
+        ' the body of the seabed: one rectangle from just under the sand line to the screen bottom
+        if camY - hh < 1.2 then
+            sy0 = cy - Int((0.25 - camY) * ppu)
+            if sy0 < 720 then
+                bs = scene.sectors[6 + sector MOD 3]
+                scr.DrawRect(0, sy0, 1280, 720 - sy0, bs.sandCol)
+            end if
+        end if
         for each sec in secs
             SceneDrawLayer(sec.layers[1], camX, camY, ppu, cx, cy, hw, hh, t, canRot)
         end for
@@ -441,6 +449,7 @@ sub RenderParticles(w as object, dt as float, camX as float, camY as float, ppu 
         ' the motes drift against camera motion so the water feels deep
         mvx = -m.cam.velX * ppu * 0.25
         mvy = m.cam.velY * ppu * 0.25
+        skyY = 360 - Int((40.5 - camY) * ppu)
         for each q in rw.motes
             if not paused then
                 q.x = q.x + (q.vx + mvx + Sin(t * 0.6 + q.ph) * 6) * dt
@@ -450,7 +459,7 @@ sub RenderParticles(w as object, dt as float, camX as float, camY as float, ppu 
                 if q.y < -8 then q.y = q.y + 736
                 if q.y > 728 then q.y = q.y - 736
             end if
-            scr.DrawScaledObject(Int(q.x), Int(q.y), q.s, q.s, reg, &hDFF6FF00 + Int(q.a * lum))
+            if q.y > skyY then scr.DrawScaledObject(Int(q.x), Int(q.y), q.s, q.s, reg, &hDFF6FF00 + Int(q.a * lum))
         end for
     end if
     bl = rw.bubbles
