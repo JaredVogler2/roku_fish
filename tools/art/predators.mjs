@@ -1410,12 +1410,157 @@ function buildBarracuda(id, opts) {
   return assemble(S, ss, layers, K.rig, { layer: pect, pivot: [0.242, -0.018], flap: [11, 1.6, 0.6] });
 }
 
+// ---------------------------------------------------------------------------- humphead wrasse
+const HUMPHEAD = {
+  lenPx: 380,
+  ss: 2,
+  body: {
+    pts: [
+      // upper lip, steep forehead, the hump over the eyes, back, peduncle
+      [0.497, -0.03], [0.493, -0.016], [0.48, -0.004], [0.464, 0.016], [0.45, 0.044], [0.438, 0.078], [0.424, 0.118], [0.404, 0.156],
+      [0.376, 0.188], [0.34, 0.208], [0.298, 0.212], [0.256, 0.2], [0.218, 0.188], [0.17, 0.188], [0.11, 0.189], [0.04, 0.182], [-0.04, 0.166],
+      [-0.12, 0.14], [-0.2, 0.105], [-0.26, 0.078], [-0.3, 0.066], [-0.33, 0.062], [-0.35, 0.056],
+      [-0.359, 0.032], [-0.361, 0.004], [-0.359, -0.024],
+      // peduncle, belly, throat, lower lip
+      [-0.35, -0.048], [-0.33, -0.054], [-0.3, -0.058], [-0.25, -0.07], [-0.18, -0.094], [-0.1, -0.122], [-0.02, -0.145], [0.06, -0.16],
+      [0.14, -0.166], [0.22, -0.164], [0.29, -0.154], [0.35, -0.137], [0.4, -0.114], [0.435, -0.092], [0.462, -0.074], [0.48, -0.064],
+      [0.491, -0.052], [0.4945, -0.042],
+    ],
+    ratio: 0.52,
+    mid: 0.5,
+    band: 0.03,
+  },
+  fins: {
+    dorsal: [
+      [0.215, 0.17], [0.2, 0.214], [0.165, 0.232], [0.1, 0.236], [0.03, 0.228], [-0.04, 0.218], [-0.1, 0.208], [-0.16, 0.196], [-0.22, 0.178],
+      [-0.28, 0.15], [-0.33, 0.124], [-0.366, 0.1, 1], [-0.335, 0.094], [-0.305, 0.074], [-0.29, 0.05],
+    ],
+    anal: [[-0.04, -0.13], [-0.06, -0.185], [-0.1, -0.2], [-0.16, -0.194], [-0.22, -0.172], [-0.28, -0.14], [-0.33, -0.112], [-0.366, -0.092, 1], [-0.335, -0.086], [-0.305, -0.068], [-0.29, -0.045]],
+    pelvic: [[0.205, -0.155], [0.175, -0.2], [0.135, -0.236], [0.108, -0.25, 1], [0.112, -0.222], [0.14, -0.18], [0.165, -0.152]],
+    caudal: [[-0.33, 0.064], [-0.37, 0.088], [-0.42, 0.104], [-0.465, 0.092], [-0.492, 0.05], [-0.5, 0.0], [-0.492, -0.046], [-0.465, -0.086], [-0.42, -0.098], [-0.37, -0.082], [-0.33, -0.056]],
+    pect: [[0.214, -0.012], [0.17, -0.004], [0.122, -0.012], [0.088, -0.036], [0.082, -0.066], [0.106, -0.09], [0.15, -0.096], [0.195, -0.076], [0.214, -0.05]],
+  },
+  finBand: 0.02,
+  rig: { xTail: -0.335, xStart: -0.02, strips: 3, ampPed: 0.012, lagPed: 2.0, pow: 1.4, rot: 9, squash: 0.3 },
+};
+
+function buildHumphead(id, opts) {
+  const K = HUMPHEAD;
+  const ctx = context(id, opts, K);
+  const { S, ss, px, pitch, body, F, A, B, C, seed } = ctx;
+  const scaleMid = mix3(A, B, 0.24);
+  const scaleEdge = mul3(A, 0.66);
+  const lineCol = mul3(C, 1.1);
+  const headBase = mix3(A, hex('#2a6c9a'), 0.5);
+  const headLine = hex('#b9c85e');
+  const yellow = hex('#d8c648');
+  const opercle = makeStroke([[0.246, 0.112], [0.222, 0.06], [0.213, 0.0], [0.224, -0.06], [0.25, -0.106]]);
+  const preop = makeStroke([[0.318, 0.05], [0.302, 0.0], [0.308, -0.05], [0.33, -0.09]]);
+  const humpLine = makeStroke([[0.418, 0.108], [0.38, 0.122], [0.33, 0.128], [0.285, 0.146], [0.256, 0.168]]);
+  const eyeL1 = makeStroke([[0.369, 0.08], [0.335, 0.1], [0.294, 0.124], [0.262, 0.137]]);
+  const eyeL2 = makeStroke([[0.369, 0.066], [0.33, 0.074], [0.288, 0.087], [0.258, 0.093]]);
+  const mouth = makeStroke([[0.4975, -0.0365], [0.482, -0.039], [0.468, -0.043], [0.457, -0.05]]);
+  const eye = { x: 0.386, y: 0.072, r: 0.0142, iris: [0.82, 0.52, 0.16], pr: 0.5, socket: 0.4, seed: 6 };
+  const xOp = (y) => 0.213 + 3.3 * y * y;
+  const G = { n: [0, 0, 1] };
+  const sc = {};
+  const bodyFn = (x, y, out) => {
+    const sd = body.sdf.at(x, y);
+    if (sd <= -0.5 * pitch) return false;
+    const alpha = clamp(0.5 + sd / pitch);
+    body.geom(x, y, G);
+    const n = G.n;
+    const s = G.s;
+    const headK = smoothstep(-0.006, 0.006, x - xOp(y));
+    let alb;
+    let gl = 0.3;
+    // ---- body: big roof-tile scales, each with a few dark wavy lines
+    {
+      const yy = lerp(y, s * 0.176, 0.5);
+      tileScale(x, yy, 0.0345, 0.0285, 0.68, sc);
+      const rim = smoothstep(0.14, 0.0, sc.e);
+      let b = mix3(scaleMid, scaleEdge, smoothstep(0.35, 0.0, sc.e) * 0.7);
+      b = mix3(b, lineCol, 0.7 * maze(x * 78 + sc.j * 3.7, yy * 34 + sc.i * 5.3, seed, 0.26));
+      b = mul3(b, (1 - 0.34 * sc.sh) * (1 + 0.3 * rim));
+      const bk = 1 - headK;
+      if (bk > 0 && sc.e < 0.3) {
+        const l = Math.hypot(sc.lx, sc.ly) || 1;
+        nudge(n, (sc.lx / l) * 0.3 * rim * bk, (sc.ly / l) * 0.3 * rim * bk);
+      }
+      alb = b;
+    }
+    // ---- head: smooth skin with a fine yellow-green maze
+    if (headK > 0) {
+      let h = mul3(headBase, 0.9 + 0.2 * organic(x * 20, y * 20, seed + 3, 2));
+      h = mix3(h, headLine, 0.6 * maze(x * 88, y * 88, seed + 9, 0.3) * smoothstep(0.492, 0.46, x));
+      // thick fleshy lips and the hump: rounded masses of their own
+      const lu = bump(n, x, y, 0.486, -0.021, 0.017, 0.0115, 0.0085);
+      const ll = bump(n, x, y, 0.479, -0.054, 0.017, 0.0105, 0.0085);
+      h = mix3(h, mix3(headBase, B, 0.55), 0.8 * Math.max(lu, ll));
+      bump(n, x, y, 0.335, 0.168, 0.062, 0.042, 0.016);
+      const hl = humpLine.dist(x, y);
+      h = mul3(h, 1 - 0.22 * smoothstep(0.006, 0.0, hl[0]) * Math.sin(PI * hl[1]));
+      nudge(n, 0, -0.25 * smoothstep(0.008, 0.0, hl[0]) * Math.sin(PI * hl[1]));
+      h = mul3(h, 1 - 0.7 * smoothstep(1.5 * px, 0.3 * px, mouth.dist(x, y)[0]));
+      h = mul3(h, 1 - 0.2 * smoothstep(1.6 * px, 0.3 * px, preop.dist(x, y)[0]));
+      // two dark lines running back from the eye
+      const d1 = eyeL1.dist(x, y);
+      const d2 = eyeL2.dist(x, y);
+      const ln = Math.max(smoothstep(0.0042, 0.0022, d1[0]) * (1 - 0.3 * d1[1]), smoothstep(0.0042, 0.0022, d2[0]) * (1 - 0.3 * d2[1]));
+      h = mix3(h, mul3(C, 0.45), 0.92 * ln);
+      alb = mix3(alb, h, headK);
+      gl = lerp(gl, 0.42, headK);
+    }
+    // gill cover edge
+    const o1 = opercle.dist(x, y);
+    const o0 = opercle.dist(x + 2 * px, y);
+    alb = mul3(alb, 1 - 0.5 * smoothstep(1.8 * px, 0.3 * px, o1[0]));
+    nudge(n, 0.4 * (smoothstep(3 * px, 0, o0[0]) - smoothstep(3 * px, 0, o1[0])), 0);
+    // soft shadow under the pectoral fin
+    alb = mul3(alb, 1 - 0.2 * clamp(0.5 + F.pect.at(x + 0.008, y + 0.012) / 0.016));
+    const ao = 0.8 + 0.2 * smoothstep(-1.0, -0.5, s);
+    let c = skin(alb, n, gl, 0.14, ao, 0.2);
+    const ex = (x - eye.x) / eye.r;
+    const ey = (y - eye.y) / eye.r;
+    if (Math.abs(ex) < 2 && Math.abs(ey) < 2) c = eyeOver(c, ex, ey, eye);
+    out[0] = c[0];
+    out[1] = c[1];
+    out[2] = c[2];
+    out[3] = alpha;
+    return true;
+  };
+  const finBase = (x, y) => mix3(mul3(A, 0.85), lineCol, 0.45 * maze(x * 70, y * 70, seed + 5, 0.22));
+  const edgeBlue = mix3(B, [0.5, 0.8, 1.0], 0.35);
+  const layers = [
+    rayFin(F.caudal, pitch, {
+      fan: [-0.25, 0.004], r0: 0.085, len: 0.165, rays: 84, alpha: [0.99, 0.93],
+      col: (x, y, r) => mix3(finBase(x, y), yellow, smoothstep(0.74, 0.93, r) * 0.92),
+    }),
+    rayFin(F.dorsal, pitch, {
+      fan: [0.25, -0.35], rays: 170, alpha: [0.99, 0.9], rOf: (x, y) => clamp((y - body.top(x)) / 0.062),
+      col: (x, y, r) => mix3(finBase(x, y), edgeBlue, 0.7 * smoothstep(0.72, 1.0, r)),
+    }),
+    rayFin(F.anal, pitch, {
+      fan: [0.2, 0.3], rays: 170, alpha: [0.99, 0.9], rOf: (x, y) => clamp((body.bot(x) - y) / 0.07),
+      col: (x, y, r) => mix3(finBase(x, y), edgeBlue, 0.7 * smoothstep(0.72, 1.0, r)),
+    }),
+    rayFin(F.pelvic, pitch, { fan: [0.2, -0.15], r0: 0.01, len: 0.12, rays: 60, alpha: [0.98, 0.88], col: (x, y) => finBase(x, y) }),
+    { box: body.box, fn: bodyFn },
+  ];
+  const pect = rayFin(F.pect, pitch, {
+    fan: [0.224, -0.034], r0: 0.012, len: 0.135, rays: 46, alpha: [0.93, 0.66],
+    col: (x, y, r) => mix3(mix3(B, [0.74, 0.7, 0.3], 0.55), mul3(A, 0.9), 0.35 * (1 - r)),
+  });
+  return assemble(S, ss, layers, K.rig, { layer: pect, pivot: [0.208, -0.034], flap: [16, 1.3, 0.6] });
+}
+
 // ---------------------------------------------------------------------------- module contract
 const BUILDERS = {
   greatWhite: (id, opts) => buildShark(id, opts, GREAT_WHITE),
   blacktipShark: (id, opts) => buildShark(id, opts, BLACKTIP),
   whitemouthMoray: buildMoray,
   blackfinBarracuda: buildBarracuda,
+  humpheadWrasse: buildHumphead,
 };
 
 /** Only finished, rigged animals are listed (the packer integrates whatever is here). */

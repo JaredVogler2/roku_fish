@@ -38,7 +38,7 @@ npm install
 npm run package
 ```
 
-That writes `dist/reefbound.zip` (about 2.8 MB; the Roku store limit for a channel is 4 MB and
+That writes `dist/reefbound.zip` (about 2.9 MB; the Roku store limit for a channel is 4 MB and
 the build fails if it is exceeded). To put it on a Roku:
 
 1. Enable developer mode on the Roku: press Home three times, Up twice, then Right, Left, Right,
@@ -129,7 +129,7 @@ cannot do real-time lighting, so the lighting is done ahead of time:
   of day, which gives day, dusk, night and three depths from the same sprites. On top: a parallax
   backdrop, light shafts, the waterline and sky, drifting particles, a soft vignette.
 
-Budget: four WebP atlases, 1.5 MB on disk, about 41 MB as textures, plus half and quarter size
+Budget: three WebP atlases, 1.6 MB on disk, about 40 MB as textures, plus half and quarter size
 copies the channel makes at load time so that small sprites are drawn from a copy near their
 on-screen size. **Low detail** keeps the creature and scenery sheets at half resolution — a
 quarter of the memory — and trims decoration. *Auto* picks it on devices that report little
@@ -207,7 +207,9 @@ Things that can only be settled on hardware:
 - **Frame rate** on a low-end player (Roku Express class). The design target is 30 fps there and
   60 on faster players. The simulation is budgeted for it (see the architecture notes); drawing
   cost on a real GPU is unmeasured.
-- **Texture memory** at High detail (about 54 MB with the reduced copies). Low detail exists for
+- **Start-up time.** Loading decodes three 2048-pixel atlases, makes their reduced copies and
+  populates the first region; this was not timed on a device.
+- **Texture memory** at High detail (about 53 MB with the reduced copies). Low detail exists for
   this; confirm which devices Auto should put in it.
 - **Mirrored sprites, rotation and colour tinting.** These are documented behaviour of the 2D
   API and the channel probes them at start-up (`GfxProbe`). Without rotation it draws parts

@@ -119,6 +119,7 @@ function CreatureNew(id as integer, sp as object, x as float, y as float, sizeMu
         nextThink: 0.0
         cleanT: 0.0
         cleanStation: -1
+        inflateK: 0.0           ' drawing: how far a puffer is blown up (0..1, eased)
         ab: {}                  ' active ability id -> end time
         abCount: 0
         lastDmgSpecies: ""

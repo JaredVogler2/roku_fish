@@ -96,9 +96,9 @@ libraries, so a rebuild after a small change takes seconds.
 
 | | |
 |---|---|
-| Creature sheets | 2 pages, 77 sprites, about 300 parts |
+| Creature sheet | 1 page, 77 sprites, about 300 parts |
 | Kit sheet | 1 page, about 80 sprites |
 | Interface and effects sheet | 1 page, about 65 sprites |
-| On disk | about 1.5 MB of WebP |
-| As textures | about 41 MB (High detail), plus reduced copies |
+| On disk | about 1.6 MB of WebP |
+| As textures | about 40 MB (High detail), plus reduced copies |
 | Scene data | 17 to 28 KB per region |

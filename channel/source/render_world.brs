@@ -395,12 +395,12 @@ sub RenderEffects(w as object, camX as float, camY as float, ppu as float, cx as
                         if grow > 1 then grow = 1.0
                         fade = age - e.dur + 1
                         if fade < 0 then fade = 0.0
-                        a = Int(235 * (1 - fade))
+                        a = Int(205 * (1 - fade))
                         sc = e.r * grow * ppu / 128.0 * 2.1
                         reg = s.parts[0].r0
-                        scr.DrawScaledObject(x, y, sc, sc * 0.9, reg, &h0A0A1400 + a)
-                        scr.DrawScaledObject(x + Int(Sin(t * 0.9) * sc * 22), y - Int(sc * 18), sc * 0.7, sc * 0.7, reg, &h0A0A1400 + a)
-                        scr.DrawScaledObject(x - Int(Cos(t * 0.7) * sc * 26), y + Int(sc * 12), sc * 0.62, sc * 0.62, reg, &h0A0A1400 + a)
+                        scr.DrawScaledObject(x, y, sc, sc * 0.9, reg, &h0C122400 + a)
+                        scr.DrawScaledObject(x + Int(Sin(t * 0.9) * sc * 22), y - Int(sc * 18), sc * 0.7, sc * 0.7, reg, &h0C122400 + a)
+                        scr.DrawScaledObject(x - Int(Cos(t * 0.7) * sc * 26), y + Int(sc * 12), sc * 0.62, sc * 0.62, reg, &h0C122400 + a)
                     end if
                 else if kind = "pulse" or kind = "sonic" or kind = "mimic" or kind = "spines" or kind = "sting" then
                     s = m.spr["fx_wave"]

@@ -449,7 +449,20 @@ sub DrawCreature(c as object, sx as integer, sy as integer, ppu as float, col as
     end if
     scr = m.screen
     k = c.vlen * ppu / spr.len
-    if c.inflated then k = k * 1.35
+    ' a puffed-up fish swells (eased) into a ball: bigger overall and much deeper than long
+    kyMul = 1.0
+    infl = c.inflateK
+    if c.inflated then
+        infl = infl + (1 - infl) * 0.25
+    else
+        infl = infl * 0.8
+        if infl < 0.01 then infl = 0.0
+    end if
+    c.inflateK = infl
+    if infl > 0 then
+        k = k * (1 + 0.12 * infl)
+        kyMul = 1 + 0.75 * infl
+    end if
     face = c.face
     af = face
     if af < 0 then af = -af
@@ -524,11 +537,11 @@ sub DrawCreature(c as object, sx as integer, sy as integer, ppu as float, col as
             reg = p.r0
         end if
         ox = p.ax * kx
-        oy = p.ay * k
+        oy = p.ay * k * kyMul
         pk = p.k
         rot = pitch
         px = kx * f
-        py = k * f
+        py = k * f * kyMul
         if not simple then
             if pk = 1 then
                 ' tail: swings and narrows with the swim cycle, follows the body wave
