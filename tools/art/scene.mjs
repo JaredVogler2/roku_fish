@@ -9,6 +9,7 @@
  * Output: per sector four layers of placements
  *           back   cave interiors and large hazy growth behind the rock
  *           rock   rock, sand and wreck timber dressing the collision shapes exactly
+ *           light  rippling sunlight on the tops of shallow rock (the device animates it)
  *           flora  corals, sponges, grass and scatter standing on the rock
  *           front  cover drawn over the animals (seagrass fronts, coral veils, cave gloom)
  *         each placement = [sprite, x, y, scaleX, scaleY, rotation, tint, swayAmp, swayRate, flags]
@@ -85,7 +86,7 @@ function compose(regionId) {
     }
     return i;
   };
-  const sectors = scene.sectors.map((s) => ({ biome: s.biome, sand: null, back: [], rock: [], flora: [], front: [] }));
+  const sectors = scene.sectors.map((s) => ({ biome: s.biome, sand: null, back: [], rock: [], light: [], flora: [], front: [] }));
   const floorAt = (x) => {
     const fx = (((x % 72) + 72) % 72) / scene.floorRes;
     const i0 = Math.floor(fx) % scene.floor.length;
@@ -405,6 +406,26 @@ function compose(regionId) {
     }
   }
 
+  // ------------------------------------------------------------------ rippling light on sunlit tops
+  // (each strip is listed twice, once per phase of the caustic sprite; the device cross-fades them)
+  for (const s of scene.surfaces) {
+    const row = Math.floor(s.sector / 3);
+    if (row > 1 || s.kind === 'floor') continue;
+    const len = s.x1 - s.x0;
+    if (len < 1.4) continue;
+    const y = Math.max(...s.ys);
+    if (Math.max(...s.ys) - Math.min(...s.ys) > 0.3) continue; // flat tops only
+    const depth = clamp((40.5 - y) / 27, 0, 1);
+    const alpha = Math.round(92 * (1 - depth * 0.75));
+    const tiles = Math.max(1, Math.round(len / 5));
+    const tw = len / tiles;
+    for (let i = 0; i < tiles; i++) {
+      for (const id of ['fx_caustic_a', 'fx_caustic_b']) {
+        add(s.sector, 'light', id, s.x0 + i * tw, y + 0.03, (tw * PPU) / 512, 0.95, { tint: [255, 252, 236], alpha });
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ growth on walls and pillars
   const wrapD = (d) => (d > 36 ? d - 72 : d < -36 ? d + 72 : d);
   const solidAt = (x, y) => {
@@ -485,14 +506,14 @@ function compose(regionId) {
     }
   }
 
-  const count = sectors.reduce((a, s) => a + s.back.length + s.rock.length + s.flora.length + s.front.length, 0);
+  const count = sectors.reduce((a, s) => a + s.back.length + s.rock.length + s.light.length + s.flora.length + s.front.length, 0);
   // lower-case keys: the device reads this with ParseJson and dot access
   const lowerTints = {};
   for (const [k, v] of Object.entries(tints)) lowerTints[k.toLowerCase()] = v;
   const out = { names, tints: lowerTints, sectors };
   fs.writeFileSync(path.join(OUT, `scene_${regionId}.json`), JSON.stringify(out));
   const kb = (fs.statSync(path.join(OUT, `scene_${regionId}.json`)).size / 1024).toFixed(0);
-  console.log(`${regionId}: ${count} placements (${sectors.map((s) => s.back.length + s.rock.length + s.flora.length + s.front.length).join(' ')}), ${names.length} sprites used, ${kb} KB`);
+  console.log(`${regionId}: ${count} placements (${sectors.map((s) => s.back.length + s.rock.length + s.light.length + s.flora.length + s.front.length).join(' ')}), ${names.length} sprites used, ${kb} KB`);
 }
 
 for (const id of ['reef', 'outer', 'wreck']) compose(id);

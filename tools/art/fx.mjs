@@ -65,6 +65,11 @@ const BUILD = {
     const glow = d > 0 ? Math.exp(-d / 22) * (0.42 + 0.3 * facets) : 0;
     return put(o, clamp(line * 0.95 + glow) * smoothstep(-3, -1, d) * smoothstep(76, 40, d));
   }), [0, 20]),
+  // sunlight focused by the waves, as it falls on a surface: a net of bright lines, strongest at
+  // the top edge of the strip and gone by its bottom. Tiles horizontally; the device cross-fades
+  // the two versions so the light appears to ripple.
+  fx_caustic_a: () => caustic(5),
+  fx_caustic_b: () => caustic(23),
   fx_mote: () => one(shade(16, 16, 3, (x, y, o) => put(o, Math.pow(clamp(1 - Math.hypot(x - 8, y - 8) / 7), 1.6)))),
   fx_bubble: () => one(shade(40, 40, 3, (x, y, o) => {
     const d = Math.hypot(x - 20, y - 20) / 17;
@@ -221,6 +226,24 @@ const BUILD = {
   bg_ridge_far: () => ridge(1024, 256, 3, 0.55),
   bg_ridge_near: () => ridge(1024, 300, 9, 0.8),
 };
+
+function caustic(seed) {
+  const w = 512;
+  const h = 112;
+  return one(shade(w, h, 2, (x, y, o) => {
+    // warp, then take the thin bright seams between cells of a tiling cellular noise
+    const u = x / 64;
+    const v = y / 46;
+    const wx = (fbm(u + 3.1, v + 1.7, 2, seed + 1, 8) - 0.5) * 0.9;
+    const wy = (fbm(u + 9.4, v + 5.2, 2, seed + 2, 8) - 0.5) * 0.9;
+    const c = worley(u + wx, v + wy, seed, 8);
+    const seam = 1 - smoothstep(0.02, 0.2, c.f2 - c.f1);
+    const c2 = worley((u + wy) * 1.9 + 4, (v + wx) * 1.9 + 2, seed + 7, 16);
+    const fine = 1 - smoothstep(0.02, 0.24, c2.f2 - c2.f1);
+    const a = clamp(seam * 0.85 + fine * 0.35) * smoothstep(h - 4, h * 0.3, y) * smoothstep(0, 5, y);
+    return put(o, a);
+  }), [0, 0]);
+}
 
 function ridge(w, h, seed, rough) {
   const sky = (x) => {

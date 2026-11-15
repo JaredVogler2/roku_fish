@@ -121,7 +121,7 @@ function drawLayer(si, layer) {
   const row = Math.floor(si / 3);
   const light = lightFor(DL, row, sec.biome);
   const tints = scene.tints[sec.biome.toLowerCase()] ?? [];
-  for (const a of sec[layer]) {
+  for (const a of sec[layer] ?? []) {
     const id = scene.names[a[0]];
     const spr = meta.sprites[id];
     if (!spr) continue;
@@ -136,7 +136,7 @@ function drawLayer(si, layer) {
     for (const p of spr.parts) {
       const img = tinted(p[0], p[1], p[2], p[3], p[4], rgb);
       g.save();
-      g.globalAlpha = (tc[3] ?? 255) / 255;
+      g.globalAlpha = ((tc[3] ?? 255) / 255) * (layer === 'light' ? 0.5 : 1);
       g.translate(X(a[1]) + p[7] * sx, Y(a[2]) + p[8] * sy);
       g.rotate((-a[5] * Math.PI) / 180);
       g.scale(sx, sy);
@@ -146,7 +146,7 @@ function drawLayer(si, layer) {
     }
   }
 }
-for (const layer of ['back', 'rock', 'flora', 'front']) for (let si = 0; si < 9; si++) drawLayer(si, layer);
+for (const layer of ['back', 'rock', 'light', 'flora', 'front']) for (let si = 0; si < 9; si++) drawLayer(si, layer);
 
 if (flag('debug', false)) {
   g.lineWidth = 1.5;

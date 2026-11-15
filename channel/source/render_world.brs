@@ -183,6 +183,11 @@ sub RenderWorld(w as object, dt as float, alpha as float, paused as boolean)
         for each sec in secs
             SceneDrawLayer(sec.layers[1], camX, camY, ppu, cx, cy, hw, hh, t, canRot)
         end for
+        if not m.lowFx then
+            for each sec in secs
+                SceneDrawLight(sec.layers[4], camX, camY, ppu, cx, cy, hw, hh, t, dl)
+            end for
+        end if
         for each sec in secs
             SceneDrawLayer(sec.layers[2], camX, camY, ppu, cx, cy, hw, hh, t, canRot)
         end for

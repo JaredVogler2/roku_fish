@@ -480,7 +480,10 @@ sub GameEvents(w as object)
         else if ev = "SCORE" then
             GameFloat("+" + FmtInt(e.delta), e.x, e.y, &hFFE58AFF)
         else if ev = "HARMFUL_BITE" then
-            if e.isPlayer then Sfx("toxic")
+            if e.isPlayer then
+                Sfx("toxic")
+                if e.damage > 0.5 then GameFloat("-" + Int(e.damage + 0.5).ToStr(), e.x, e.y, &hA8FF6AFF)
+            end if
         else if ev = "FEED_REJECTED" then
             if e.isPlayer then
                 if e.result = "REPELLED" then
@@ -497,6 +500,7 @@ sub GameEvents(w as object)
             if e.isPlayer then
                 Sfx("hurt")
                 CameraShake(0.12)
+                if e.amount >= 1 then GameFloat("-" + Int(e.amount + 0.5).ToStr(), e.x, e.y + 0.4, &hFF7F8EFF)
             end if
         else if ev = "PREDATOR_SPOTTED" then
             Sfx("predator", 0.8)

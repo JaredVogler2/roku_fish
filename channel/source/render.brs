@@ -228,7 +228,7 @@ function SceneLoad(regionId as string) as dynamic
         sec = { biome: sj.biome, layers: [], n: 0, lightKey: -1, sand: sj.sand, sandCol: &h8A8266FF }
         tints = j.tints[LCase(sj.biome)]
         li = 0
-        for each lname in ["back", "rock", "flora", "front"]
+        for each lname in ["back", "rock", "flora", "front", "light"]
             src = sj[lname]
             lst = []
             if src <> invalid then
@@ -245,7 +245,7 @@ function SceneLoad(regionId as string) as dynamic
                         if d < 0 then d = 0.0
                         if d > 1.15 then d = 1.15
                         flags = a[9]
-                        if li >= 2 or flags >= 2 then d = d * 0.55
+                        if (li >= 2 and li <= 3) or flags >= 2 then d = d * 0.55
                         k = 1.0 / spr.len
                         bx = spr.box
                         mx = MaxF(Abs(bx[0]), Abs(bx[2]))
@@ -357,6 +357,33 @@ sub SceneDrawLayer(lst as object, camX as float, camY as float, ppu as float, cx
                 end if
             end if
         end if
+    end for
+end sub
+
+' Rippling sunlight on rock tops: pairs of caustic strips cross-fading out of phase. The alpha
+' follows the daylight (dl), so there is none at night.
+sub SceneDrawLight(lst as object, camX as float, camY as float, ppu as float, cx as integer, cy as integer, hw as float, hh as float, t as float, dl as float)
+    if dl < 0.2 then return
+    scr = m.screen
+    i = 0
+    for each it in lst
+        dx = it.x - camX
+        if dx > 36 then
+            dx = dx - 72
+        else if dx < -36 then
+            dx = dx + 72
+        end if
+        ext = it.ext
+        if dx < hw + ext and dx > -hw - ext then
+            dy = it.y - camY
+            if dy < hh + 1.5 and dy > -hh - 0.5 then
+                ' the two strips of a pair are half a cycle apart
+                wv = 0.5 + 0.5 * Sin(t * 1.1 + it.x * 0.9 + (i MOD 2) * 3.14159)
+                a = Int(it.ta * dl * (0.25 + 0.75 * wv))
+                if a > 3 then scr.DrawScaledObject(cx + Int(dx * ppu), cy - Int(dy * ppu), it.sx * ppu, it.sy * ppu, it.r0, &hFFFCEC00 + a)
+            end if
+        end if
+        i = i + 1
     end for
 end sub
 
