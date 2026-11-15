@@ -92,6 +92,7 @@ end sub
 sub AppDebugArgs(args as dynamic)
     if type(args) <> "roAssociativeArray" then return
     if args.test <> invalid then m.app.test = args.test
+    if args.trace <> invalid then m.app.trace = true
     md = args.mode
     if md = invalid then md = args.contentId
     if md = invalid then return
@@ -159,14 +160,13 @@ end sub
 sub AppTestHook(w as object)
     app = m.app
     t = app.test
-    if t = "trace" then
-        ' once a second: where the player and the camera are (for chasing camera bugs)
+    if app.trace = true then
+        ' once a second: where the player and the camera are, and how the player is doing
         if w.tick MOD 30 = 0 and w.player <> invalid then
             p = w.player
             cam = m.cam
-            print "trace t="; Int(w.time); " p=("; Int(p.x * 10) / 10; ","; Int(p.y * 10) / 10; ") sec="; p.sector; " cam=("; Int(cam.x * 10) / 10; ","; Int(cam.y * 10) / 10; ") camsec="; cam.sector; " scr=("; p.scrX; ","; p.scrY; ") vh="; Int(cam.viewH * 10) / 10; " trans="; cam.trans; " fps="; Int(m.game.fps)
+            print "trace t="; Int(w.time); " p=("; Int(p.x * 10) / 10; ","; Int(p.y * 10) / 10; ") sec="; p.sector; " cam=("; Int(cam.x * 10) / 10; ","; Int(cam.y * 10) / 10; ") scr=("; p.scrX; ","; p.scrY; ") hp="; Int(p.health); " en="; Int(p.energy); " score="; w.ps.score; " fps="; Int(m.game.fps)
         end if
-        return
     end if
     if t = invalid or w.time < 3 then return
     app.test = invalid
@@ -203,7 +203,7 @@ sub GameFrame(dt as float)
     p = w.player
     ps = w.ps
     inp = m.inp
-    if app.test <> invalid then AppTestHook(w)
+    if app.test <> invalid or app.trace = true then AppTestHook(w)
 
     ' what, if anything, is in front of the game?
     modal = app.overlay

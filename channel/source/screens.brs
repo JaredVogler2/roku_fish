@@ -13,6 +13,7 @@ sub AppInit()
         summary: invalid
         quit: false
         test: invalid        ' test hook requested by a launch parameter
+        trace: false         ' print the player's state once a second (launch parameter trace=1)
         guideReturn: ""
     }
 end sub

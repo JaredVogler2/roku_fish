@@ -191,7 +191,8 @@ node tools/sim/run.mjs --script=tools/sim/scripts/soak.mjs --args=mode=practice,
 `--args` are launch parameters (the channel's `Main(args)`): `mode` (`ascension`, `tutorial`,
 `tournament`, `challenge`, `practice`), `species`, `region`, `time`, `detail` (`high`/`low`), and
 `test` (`upgrade`, `death`, `stage`, `apex`, `hurt`, `starve`, `night`, `clean`) to force
-situations that take a while to reach by playing. A normal launch has none of these.
+situations that take a while to reach by playing, and `trace=1` to print the player's position,
+health and score once a second. A normal launch has none of these.
 
 The simulator re-colours a whole texture in JavaScript whenever the tint changes, which a real
 Roku does per draw on the GPU; the harness patches that one code path so scenes render at a
