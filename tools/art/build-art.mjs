@@ -34,7 +34,7 @@ const flag = (n, d) => {
 /** group: which atlas family a module's sprites go to (kept apart so regions can be loaded separately later). */
 /** Listed in priority order: when two modules provide the same id, the first one wins. */
 const MODULES = [
-  { name: 'predators', file: 'predators.mjs', group: 'creatures' },
+  { name: 'predators', file: 'predators.mjs', group: 'creatures', optional: true },
   { name: 'fish', file: 'fish.mjs', group: 'creatures' },
   { name: 'critters', file: 'critters.mjs', group: 'creatures' },
   { name: 'flora', file: 'flora.mjs', group: 'kit' },
@@ -162,7 +162,14 @@ async function main() {
         def = loadDef(cf);
         cached++;
       } else {
-        def = m.build(id);
+        try {
+          def = m.build(id);
+        } catch (e) {
+          // a module may list a sprite it cannot build yet; a later module's version is used instead
+          if (!mod.optional) throw e;
+          console.log(`  (${mod.name}: ${id} not available - ${String(e.message).split('\n')[0]})`);
+          continue;
+        }
         const issues = validate(id, def);
         if (issues.length) throw new Error(issues.join('\n'));
         saveDef(cf, def);

@@ -14,7 +14,8 @@ platform: the simulation is ported to BrightScript, everything is drawn with the
 |---|---|
 | ![Sun Garden](docs/screens/sun-garden.jpg) | ![Cleaning Grotto](docs/screens/cleaning-grotto.jpg) |
 | ![Shallow Nursery](docs/screens/shallows.jpg) | ![Night on the reef](docs/screens/night.jpg) |
-| ![Bitten by a grouper](docs/screens/attack.jpg) | ![Field Guide](docs/screens/field-guide.jpg) |
+| ![Great white sharks at the Blue Edge](docs/screens/great-white.jpg) | ![Bitten by a grouper](docs/screens/attack.jpg) |
+| ![Field Guide](docs/screens/field-guide.jpg) | ![Classic Tournament](docs/screens/tournament.jpg) |
 | ![Practice](docs/screens/practice.jpg) | ![Reef Lab](docs/screens/reef-lab.jpg) |
 
 All pictures in this repository are frames from the channel itself, running in a BrightScript
