@@ -946,7 +946,7 @@ const GREAT_WHITE = {
         const kx = smoothstep(-0.2, -0.25, x);
         if (kx > 0) {
           const q = (y - 0.003) / 0.0055;
-          nudge(n, 0, 0.5 * kx * q * Math.exp(-q * q));
+          nudge(n, 0, 0.3 * kx * q * Math.exp(-q * q));
         }
         return alb;
       },
@@ -1026,8 +1026,8 @@ const BLACKTIP = {
   },
   blend: 0.01,
   tailFade: 0.05,
-  gloss: 0.3,
-  sheen: 0.2,
+  gloss: 0.26,
+  sheen: 0.13,
   rig: { xTail: -0.255, xStart: 0.1, strips: 6, ampPed: 0.015, lagPed: 4.2, pow: 1.4, rot: 8, squash: 0.28 },
   look: ({ A, B, C, seed, px }) => {
     const bronze = mix3(A, hex('#9a7e5c'), 0.6);
@@ -1101,10 +1101,178 @@ const BLACKTIP = {
   },
 };
 
+// ---------------------------------------------------------------------------- whitemouth moray
+const MORAY = {
+  lenPx: 400,
+  ss: 3,
+  body: {
+    pts: [
+      // back, snout to tail tip (authored straight: the wave rig bends it)
+      [0.497, 0.003], [0.494, 0.014], [0.483, 0.024], [0.46, 0.032], [0.43, 0.039], [0.39, 0.046], [0.34, 0.05], [0.25, 0.05], [0.1, 0.049],
+      [-0.05, 0.047], [-0.2, 0.042], [-0.32, 0.035], [-0.4, 0.027], [-0.45, 0.018], [-0.485, 0.008], [-0.497, 0.0],
+      // belly, tail tip to chin (the lower jaw hangs open)
+      [-0.485, -0.008], [-0.45, -0.018], [-0.4, -0.027], [-0.32, -0.036], [-0.2, -0.043], [-0.05, -0.048], [0.1, -0.05], [0.25, -0.051],
+      [0.34, -0.054], [0.39, -0.052], [0.43, -0.046], [0.46, -0.039], [0.48, -0.032], [0.49, -0.025], [0.4945, -0.015],
+    ],
+    ratio: [[0.5, 0.9], [0.3, 0.92], [0, 0.85], [-0.3, 0.72], [-0.5, 0.5]],
+    mid: 0.5,
+  },
+  fins: {
+    // one continuous fleshy fold: dorsal fin from the nape, round the tail tip, anal fin to mid body
+    fold: [
+      [0.385, 0.03], [0.362, 0.054], [0.33, 0.066], [0.28, 0.072], [0.18, 0.074], [0.05, 0.073], [-0.1, 0.07], [-0.24, 0.063], [-0.35, 0.05],
+      [-0.43, 0.034], [-0.48, 0.018], [-0.5, 0.0], [-0.48, -0.017], [-0.43, -0.031], [-0.35, -0.046], [-0.24, -0.057], [-0.1, -0.063],
+      [-0.02, -0.064], [0.02, -0.058], [0.04, -0.04],
+    ],
+  },
+  rig: { xTail: -0.43, xStart: 0.37, strips: 10, ampPed: 0.03, lagPed: 6.0, pow: 1.2, rot: 4, squash: 0.1 },
+};
+
+function buildMoray(id, opts) {
+  const K = MORAY;
+  const ctx = context(id, opts, K);
+  const { S, ss, px, pitch, body, F, A, B, seed } = ctx;
+  const HALF_PI = PI / 2;
+  const cream = mul3(B, 0.95);
+  // ---- skin: dark chocolate with small dark-edged white spots, unwrapped round the trunk so the
+  // spots crowd toward the back and belly lines as they would on a cylinder
+  const unwrap = (x, y) => {
+    const t = body.top(x);
+    const b = body.bot(x);
+    const m = (t + b) / 2;
+    const h = (t - b) / 2;
+    if (y >= t) return m + h * HALF_PI + (y - t);
+    if (y <= b) return m - h * HALF_PI - (b - y);
+    return m + h * Math.asin(clamp((y - m) / Math.max(h, 1e-6), -1, 1));
+  };
+  const skinCol = (x, y) => {
+    const V = unwrap(x, y);
+    const dens = 46 + 150 * Math.max(0, x - 0.3); // finer spots on the head
+    const X = 46 * x + 75 * Math.pow(Math.max(0, x - 0.3), 2);
+    let c = mul3(A, 0.62 + 0.4 * organic(x * 14, V * 14, seed, 3));
+    c = saturate([c[0] * 1.1, c[1] * 0.98, c[2] * 0.86], 1.3);
+    const w = worley(X, V * dens, seed + 3);
+    if (w.id > 0.1) {
+      const rad = 0.16 + 0.16 * fract(w.id * 7.13);
+      c = mul3(c, 1 - 0.5 * smoothstep(rad + 0.17, rad + 0.03, w.f1));
+      c = mix3(c, cream, smoothstep(rad + 0.035, rad - 0.035, w.f1));
+    }
+    // white tail tip
+    return mix3(c, cream, smoothstep(-0.484, -0.495, x));
+  };
+  // ---- open mouth: white lining between the lips, a small notch between the jaw tips
+  const xc = 0.418;
+  const xu = 0.4945;
+  const lipU = (t) => lerp(-0.012, -0.0005, t) - 0.003 * Math.sin(PI * t);
+  const lipL = (t) => lerp(-0.012, -0.0165, t) - 0.0015 * Math.sin(PI * t);
+  const notch = makeSdf(outline([[0.4815, -0.0085, 1], [0.5, 0.0005, 1], [0.5, -0.0165, 1]], 4), 0.5 * px, 0.01);
+  const eye = { x: 0.4635, y: 0.0145, r: 0.0098, iris: [0.86, 0.8, 0.5], pr: 0.5, socket: 0.45, seed: 9 };
+  const G = { n: [0, 0, 1] };
+  const bodyFn = (x, y, out) => {
+    const sd = body.sdf.at(x, y);
+    if (sd <= -0.5 * pitch) return false;
+    let alpha = clamp(0.5 + sd / pitch) * (1 - clamp(0.5 + notch.at(x, y) / pitch));
+    if (!(alpha > 0)) return false;
+    body.geom(x, y, G);
+    const n = G.n;
+    const s = G.s;
+    let alb = skinCol(x, y);
+    let ao = 0.78 + 0.22 * smoothstep(-1.0, -0.4, s);
+    let c = null;
+    if (x > xc - 0.02) {
+      const t = (x - xc) / (xu - xc);
+      if (t > 0 && t < 1.08) {
+        const yU = lipU(t);
+        const yL = lipL(t);
+        if (y < yU && y > yL) {
+          // the white mouth lining: shaded under the upper jaw and toward the hinge
+          let m = mix3([0.93, 0.9, 0.86], [0.8, 0.6, 0.56], 0.45 * smoothstep(0.5, 0.0, t));
+          m = mul3(m, (0.55 + 0.45 * smoothstep(yU, yL, y)) * (0.5 + 0.5 * smoothstep(0.0, 0.45, t)));
+          // needle teeth on both jaws
+          const tw = 0.0115;
+          const fu = (x - 0.4385) / tw;
+          const fl = fu + 0.5;
+          const len = 0.0065 * smoothstep(0.15, 0.5, t);
+          const du = (yU - y) / len;
+          const dl = (y - yL) / len;
+          const wu = Math.abs(fract(fu) - 0.5) * tw;
+          const wl = Math.abs(fract(fl) - 0.5) * tw;
+          if (x > 0.433 && du < 1 && wu < 0.0019 * (1 - du)) m = mul3([1.0, 0.97, 0.88], 0.8 + 0.3 * du);
+          else if (x > 0.433 && dl < 1 && wl < 0.0019 * (1 - dl)) m = mul3([1.0, 0.97, 0.88], 0.8 + 0.3 * dl);
+          c = tone(mul3(m, 0.96));
+        } else {
+          // rounded lips: the lower one catches the light, the upper one is in its own shadow
+          const dU = (y - yU) / px;
+          const dL = (yL - y) / px;
+          if (dU >= 0 && dU < 3) {
+            nudge(n, 0, -0.5 * smoothstep(3, 0, dU));
+            alb = mul3(alb, 1 - 0.35 * smoothstep(1.4, 0, dU));
+          }
+          if (dL >= 0 && dL < 3) {
+            nudge(n, 0, 0.6 * smoothstep(3, 0, dL));
+            alb = mul3(alb, 1 - 0.3 * smoothstep(1.2, 0, dL));
+          }
+        }
+      }
+    }
+    if (!c) {
+      // jaw muscle swell behind the eye, throat pleats, the small dark gill opening
+      bump(n, x, y, 0.405, 0.012, 0.035, 0.022, 0.004);
+      if (x > 0.3 && x < 0.455 && s < -0.25) {
+        const pl = Math.sin((s + 1) * 26);
+        const k = smoothstep(0.3, 0.33, x) * smoothstep(0.455, 0.42, x) * smoothstep(-0.25, -0.45, s);
+        nudge(n, 0, 0.16 * k * pl);
+        alb = mul3(alb, 1 - 0.1 * k * (0.5 + 0.5 * pl));
+      }
+      const gd = Math.hypot((x - 0.33) / 0.0068, (y + 0.006) / 0.0046);
+      alb = mul3(alb, 1 - 0.85 * smoothstep(1.15, 0.7, gd) - 0.25 * smoothstep(2.6, 1.0, gd) * smoothstep(0.7, 1.15, gd));
+      c = skin(alb, n, 0.46, 0.2, ao, 0.2);
+    }
+    const ex = (x - eye.x) / eye.r;
+    const ey = (y - eye.y) / eye.r;
+    if (Math.abs(ex) < 2 && Math.abs(ey) < 2) c = eyeOver(c, ex, ey, eye);
+    alpha *= melt(sd, x, y, [F.fold], 0.009);
+    out[0] = c[0];
+    out[1] = c[1];
+    out[2] = c[2];
+    out[3] = alpha;
+    return true;
+  };
+  // ---- tube nostril on the snout tip
+  const nb = [0.4905, 0.0095, 0.5035, 0.0145, 0.0034];
+  const nostril = {
+    box: [nb[0] - nb[4], nb[1] - nb[4], nb[2] + nb[4], nb[3] + nb[4]],
+    fn: (x, y, out) => {
+      const r = segDist(x, y, nb[0], nb[1], nb[2], nb[3]);
+      const d = nb[4] * (1 - 0.2 * r[1]) - r[0];
+      if (d <= -0.5 * pitch) return false;
+      const q = clamp(1 - d / nb[4]);
+      const ux = nb[2] - nb[0];
+      const uy = nb[3] - nb[1];
+      const side = Math.sign((x - nb[0]) * -uy + (y - nb[1]) * ux) || 1;
+      const l = Math.hypot(ux, uy);
+      const nn = [(-uy / l) * side * q, (ux / l) * side * q, Math.sqrt(Math.max(0.02, 1 - q * q))];
+      const c = skin(mix3(mul3(A, 0.9), cream, 0.25 + 0.45 * r[1]), nn, 0.4, 0.2, 1, 0.3);
+      out[0] = c[0];
+      out[1] = c[1];
+      out[2] = c[2];
+      out[3] = clamp(0.5 + d / pitch);
+      return true;
+    },
+  };
+  const fold = foilFin(F.fold, pitch, {
+    alb: (x, y, sd) => mul3(skinCol(x, y), 0.82 + 0.18 * smoothstep(0, 0.012, sd)),
+    dome: [0, 0], rim: 0.8, rimW: 0.004, gloss: 0.4, sheen: 0.18,
+    ao: (x, y) => 0.78 + 0.22 * smoothstep(0, 0.014, -body.sdf.at(x, y)),
+  });
+  return assemble(S, ss, [fold, { box: body.box, fn: bodyFn }, nostril], K.rig, null);
+}
+
 // ---------------------------------------------------------------------------- module contract
 const BUILDERS = {
   greatWhite: (id, opts) => buildShark(id, opts, GREAT_WHITE),
   blacktipShark: (id, opts) => buildShark(id, opts, BLACKTIP),
+  whitemouthMoray: buildMoray,
 };
 
 /** Only finished, rigged animals are listed (the packer integrates whatever is here). */
