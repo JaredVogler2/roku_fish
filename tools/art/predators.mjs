@@ -18,8 +18,10 @@
  *    species with hair-thin features (teeth, beak, small spots) default to ss = 3.
  *  - Rig (see lib/sprite.mjs and DrawCreature in channel/source/render.brs), back to front:
  *    tail (rotates, narrows, follows the body wave), wave strips from the tail joint forward,
- *    static front body, near-side pectoral fin (flap). The strips are cut so that the neutral
- *    pose composites back to the original render exactly, also through translucent fins.
+ *    static front body, near-side pectoral fin (flap). Parts are cropped to their content plus a
+ *    3 px transparent margin, pivots are whole pixels on a 4 px grid (they stay exact on the
+ *    device's half and quarter size copies), and the strips are cut so that the neutral pose
+ *    composites back to the un-sliced render (to rounding), also through translucent fins.
  *  - Everything is deterministic: noise seeds derive from the species id.
  */
 import fs from 'node:fs';
@@ -1433,15 +1435,16 @@ const HUMPHEAD = {
   fins: {
     dorsal: [
       [0.215, 0.17], [0.2, 0.214], [0.165, 0.232], [0.1, 0.236], [0.03, 0.228], [-0.04, 0.218], [-0.1, 0.208], [-0.16, 0.196], [-0.22, 0.178],
-      [-0.28, 0.15], [-0.33, 0.124], [-0.366, 0.1, 1], [-0.335, 0.094], [-0.305, 0.074], [-0.29, 0.05],
+      [-0.275, 0.152], [-0.31, 0.13], [-0.332, 0.108, 1], [-0.312, 0.096], [-0.296, 0.076], [-0.29, 0.05],
     ],
-    anal: [[-0.04, -0.13], [-0.06, -0.185], [-0.1, -0.2], [-0.16, -0.194], [-0.22, -0.172], [-0.28, -0.14], [-0.33, -0.112], [-0.366, -0.092, 1], [-0.335, -0.086], [-0.305, -0.068], [-0.29, -0.045]],
+    anal: [[-0.04, -0.13], [-0.06, -0.185], [-0.1, -0.2], [-0.16, -0.194], [-0.22, -0.172], [-0.275, -0.142], [-0.31, -0.12], [-0.332, -0.1, 1], [-0.312, -0.088], [-0.296, -0.07], [-0.29, -0.045]],
     pelvic: [[0.205, -0.155], [0.175, -0.2], [0.135, -0.236], [0.108, -0.25, 1], [0.112, -0.222], [0.14, -0.18], [0.165, -0.152]],
     caudal: [[-0.33, 0.064], [-0.37, 0.088], [-0.42, 0.104], [-0.465, 0.092], [-0.492, 0.05], [-0.5, 0.0], [-0.492, -0.046], [-0.465, -0.086], [-0.42, -0.098], [-0.37, -0.082], [-0.33, -0.056]],
     pect: [[0.214, -0.012], [0.17, -0.004], [0.122, -0.012], [0.088, -0.036], [0.082, -0.066], [0.106, -0.09], [0.15, -0.096], [0.195, -0.076], [0.214, -0.05]],
   },
   finBand: 0.02,
-  rig: { xTail: -0.335, xStart: -0.02, strips: 3, ampPed: 0.012, lagPed: 2.0, pow: 1.4, rot: 9, squash: 0.3 },
+  // the dorsal and anal lobes end just in front of the tail joint, so the swinging tail never tears them
+  rig: { xTail: -0.345, xStart: -0.02, strips: 3, ampPed: 0.012, lagPed: 2.0, pow: 1.4, rot: 9, squash: 0.3 },
 };
 
 function buildHumphead(id, opts) {
@@ -1494,9 +1497,9 @@ function buildHumphead(id, opts) {
       let h = mul3(headBase, 0.9 + 0.2 * organic(x * 20, y * 20, seed + 3, 2));
       h = mix3(h, headLine, 0.6 * maze(x * 88, y * 88, seed + 9, 0.3) * smoothstep(0.492, 0.46, x));
       // thick fleshy lips and the hump: rounded masses of their own
-      const lu = bump(n, x, y, 0.486, -0.021, 0.017, 0.0115, 0.0085);
-      const ll = bump(n, x, y, 0.479, -0.054, 0.017, 0.0105, 0.0085);
-      h = mix3(h, mix3(headBase, B, 0.55), 0.8 * Math.max(lu, ll));
+      const lu = bump(n, x, y, 0.485, -0.02, 0.019, 0.013, 0.011);
+      const ll = bump(n, x, y, 0.478, -0.055, 0.019, 0.0115, 0.011);
+      h = mix3(h, mix3(headBase, B, 0.7), 0.9 * Math.max(lu, ll));
       bump(n, x, y, 0.335, 0.168, 0.062, 0.042, 0.016);
       const hl = humpLine.dist(x, y);
       h = mul3(h, 1 - 0.22 * smoothstep(0.006, 0.0, hl[0]) * Math.sin(PI * hl[1]));
@@ -1582,7 +1585,7 @@ const NEEDLEFISH = {
     ],
     pect: [[0.184, 0.002], [0.16, -0.012], [0.136, -0.03], [0.118, -0.046, 1], [0.136, -0.044], [0.16, -0.032], [0.182, -0.016]],
   },
-  rig: { xTail: -0.405, xStart: 0.14, strips: 7, ampPed: 0.016, lagPed: 4.6, pow: 1.3, rot: 6, squash: 0.25 },
+  rig: { xTail: -0.405, xStart: 0.14, strips: 7, ampPed: 0.014, lagPed: 4.6, pow: 1.3, rot: 6, squash: 0.25 },
 };
 
 function buildNeedlefish(id, opts) {
