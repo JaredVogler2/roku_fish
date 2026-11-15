@@ -1269,11 +1269,153 @@ function buildMoray(id, opts) {
   return assemble(S, ss, [fold, { box: body.box, fn: bodyFn }, nostril], K.rig, null);
 }
 
+// ---------------------------------------------------------------------------- blackfin barracuda
+/** Fine overlapping scale rows (as fish.mjs): darker rims in the albedo, a small tilt in the normal. */
+function fineScales(alb, n, u, s, nu, nv, k) {
+  if (!(k > 0)) return alb;
+  const row = (Math.asin(clamp(s, -1, 1)) / (PI / 2)) * nv;
+  const ri = Math.floor(row);
+  const cx = fract(u * nu + (ri & 1 ? 0.5 : 0)) - 0.5;
+  const cy = row - ri - 0.5;
+  const rim = smoothstep(0.3, 0.52, Math.hypot(cx * 1.15 - 0.12, cy));
+  nudge(n, cx * 0.2 * k, cy * 0.16 * k);
+  return mul3(alb, 1 - 0.12 * rim * k);
+}
+
+const BARRACUDA = {
+  lenPx: 330,
+  ss: 3,
+  body: {
+    pts: [
+      // back, upper jaw tip to tail
+      [0.488, 0.001], [0.47, 0.007], [0.44, 0.014], [0.4, 0.021], [0.35, 0.029], [0.3, 0.036], [0.24, 0.043], [0.17, 0.05], [0.09, 0.055],
+      [0.0, 0.056], [-0.09, 0.053], [-0.18, 0.046], [-0.26, 0.036], [-0.33, 0.026], [-0.375, 0.021], [-0.4, 0.019], [-0.418, 0.0],
+      // belly, tail to the jutting lower jaw
+      [-0.4, -0.019], [-0.375, -0.021], [-0.33, -0.027], [-0.26, -0.038], [-0.18, -0.049], [-0.09, -0.057], [0.0, -0.06], [0.09, -0.059],
+      [0.17, -0.054], [0.24, -0.048], [0.3, -0.041], [0.35, -0.035], [0.4, -0.029], [0.44, -0.024], [0.47, -0.019], [0.49, -0.014],
+      [0.4985, -0.0095], [0.5, -0.005, 1], [0.495, -0.002], [0.489, -0.0015, 1],
+    ],
+    ratio: 0.88,
+    mid: 0.5,
+  },
+  fins: {
+    dorsal1: [[0.118, 0.05], [0.102, 0.098], [0.094, 0.118, 1], [0.082, 0.096], [0.07, 0.074], [0.058, 0.06, 1], [0.064, 0.048]],
+    dorsal2: [[-0.12, 0.045], [-0.135, 0.084], [-0.15, 0.11, 1], [-0.16, 0.086], [-0.172, 0.068], [-0.19, 0.058], [-0.207, 0.054, 1], [-0.192, 0.038]],
+    anal: [[-0.13, -0.048], [-0.146, -0.086], [-0.162, -0.11, 1], [-0.172, -0.086], [-0.184, -0.068], [-0.2, -0.059], [-0.216, -0.056, 1], [-0.202, -0.04]],
+    pelvic: [[0.126, -0.052], [0.106, -0.084], [0.086, -0.098, 1], [0.083, -0.08], [0.094, -0.054]],
+    caudal: [
+      [-0.38, 0.022], [-0.42, 0.045], [-0.46, 0.078], [-0.5, 0.104, 1], [-0.478, 0.06], [-0.455, 0.025], [-0.442, 0.0], [-0.455, -0.025],
+      [-0.478, -0.06], [-0.5, -0.104, 1], [-0.46, -0.08], [-0.42, -0.046], [-0.38, -0.022],
+    ],
+    pect: [[0.246, -0.008], [0.216, -0.02], [0.186, -0.038], [0.164, -0.056, 1], [0.182, -0.06], [0.212, -0.047], [0.242, -0.03]],
+  },
+  rig: { xTail: -0.39, xStart: 0.1, strips: 6, ampPed: 0.013, lagPed: 4.2, pow: 1.4, rot: 8, squash: 0.28 },
+};
+
+function buildBarracuda(id, opts) {
+  const K = BARRACUDA;
+  const ctx = context(id, opts, K);
+  const { S, ss, px, pitch, body, F, A, B, C, seed } = ctx;
+  const back = mul3(mix3(A, hex('#27485e'), 0.6), 0.72);
+  const silver = mul3(C, 0.96);
+  const belly = [0.93, 0.95, 0.96];
+  const dark = mul3(B, 0.75);
+  const yLL = 0.005;
+  const opercle = makeStroke([[0.264, 0.032], [0.247, 0.012], [0.243, -0.008], [0.252, -0.028], [0.268, -0.042]]);
+  const preop = makeStroke([[0.313, 0.022], [0.303, 0.0], [0.306, -0.02], [0.32, -0.034]]);
+  const eye = { x: 0.35, y: 0.0085, r: 0.019, iris: [0.84, 0.78, 0.56], pr: 0.5, socket: 0.3, seed: 4 };
+  const mouthY = (t) => lerp(-0.0015, -0.016, t) + 0.0022 * Math.sin(PI * t);
+  const G = { n: [0, 0, 1] };
+  const bodyFn = (x, y, out) => {
+    const sd = body.sdf.at(x, y);
+    if (sd <= -0.5 * pitch) return false;
+    const alpha = clamp(0.5 + sd / pitch);
+    body.geom(x, y, G);
+    const n = G.n;
+    const s = G.s;
+    const u = 0.5 - x;
+    let alb = mix3(silver, back, smoothstep(0.3, 0.9, s));
+    alb = mix3(alb, belly, smoothstep(-0.2, -0.8, s));
+    // 20-odd dark chevrons on the upper flank, their points on the lateral line facing the head
+    if (x < 0.27 && x > -0.4) {
+      const f = fract((0.262 - x - (y > yLL ? 0.75 : 0.5) * Math.abs(y - yLL)) / 0.0305);
+      const bar = smoothstep(0.3, 0.42, f) * smoothstep(0.78, 0.66, f);
+      const m = smoothstep(yLL - 0.02, yLL - 0.006, y) * smoothstep(0.27, 0.245, x) * smoothstep(-0.4, -0.375, x);
+      alb = mix3(alb, mul3(dark, 0.55), 0.85 * bar * m);
+    }
+    const bodyK = smoothstep(0.255, 0.225, x) * smoothstep(-0.41, -0.38, x) * smoothstep(1.0, 0.75, Math.abs(s));
+    alb = fineScales(alb, n, u, s, 120, 15, bodyK);
+    // lateral line
+    alb = mul3(alb, 1 - 0.22 * gauss(y - yLL + 0.002 * Math.sin(x * 9), 0.0016) * bodyK);
+    let ao = 0.8 + 0.2 * smoothstep(-1.0, -0.45, s);
+    let c = null;
+    if (x > 0.2) {
+      // gill cover and cheek plate: a crease with a lit edge in front of it
+      const o1 = opercle.dist(x, y);
+      const o0 = opercle.dist(x + 1.6 * px, y);
+      alb = mul3(alb, 1 - 0.5 * smoothstep(1.5 * px, 0.3 * px, o1[0]));
+      nudge(n, 0.35 * (smoothstep(2.5 * px, 0, o0[0]) - smoothstep(2.5 * px, 0, o1[0])), 0);
+      alb = mul3(alb, 1 - 0.22 * smoothstep(1.4 * px, 0.3 * px, preop.dist(x, y)[0]));
+      // jaws: the lower one juts out; a slightly open mouth shows the teeth line
+      const t = (0.489 - x) / (0.489 - 0.39);
+      if (t > -0.12 && t < 1.05) {
+        const tt = clamp(t);
+        const yU = mouthY(tt);
+        const gap = 0.0085 * Math.pow(1 - tt, 0.5) * smoothstep(1.0, 0.82, tt) + 0.7 * px;
+        const yL = yU - gap;
+        if (y < yU && y > yL && t > 0) {
+          let m = [0.035, 0.02, 0.025];
+          const tw = 0.0088;
+          const fu = (0.489 - x) / tw;
+          const du = (yU - y) / (gap * 0.72);
+          const dl = (y - yL) / (gap * (x > 0.468 ? 1.05 : 0.6));
+          if (du < 1 - Math.abs(fract(fu) - 0.5) * 2.3) m = mul3([0.97, 0.96, 0.9], 0.7 + 0.3 * du);
+          else if (dl < 1 - Math.abs(fract(fu + 0.5) - 0.5) * 2.5) m = mul3([0.97, 0.96, 0.9], 0.7 + 0.3 * dl);
+          c = tone(m);
+        } else {
+          const dU = (y - yU) / px;
+          const dL = (yL - y) / px;
+          if (dU >= 0 && dU < 2) alb = mul3(alb, 1 - 0.45 * smoothstep(2, 0.2, dU));
+          if (dL >= 0 && dL < 2.5) {
+            alb = mul3(alb, 1 - 0.3 * smoothstep(2.5, 0.2, dL));
+            nudge(n, 0, 0.3 * smoothstep(2.5, 0, dL));
+          }
+        }
+      }
+      // maxilla end under the eye, nostril
+      const mx = segDist(x, y, 0.39, -0.016, 0.372, -0.0235);
+      alb = mul3(alb, 1 - 0.35 * smoothstep(1.2 * px, 0.2 * px, mx[0]));
+      alb = mul3(alb, 1 - 0.6 * smoothstep(1.2, 0.5, Math.hypot((x - 0.402) / 0.0045, (y - 0.0135) / 0.0022)));
+    }
+    if (!c) c = skin(alb, n, 0.55, 0.26, ao, 0.2);
+    const ex = (x - eye.x) / eye.r;
+    const ey = (y - eye.y) / eye.r;
+    if (Math.abs(ex) < 2 && Math.abs(ey) < 2) c = eyeOver(c, ex, ey, eye);
+    out[0] = c[0];
+    out[1] = c[1];
+    out[2] = c[2];
+    out[3] = alpha;
+    return true;
+  };
+  const finDark = (k) => () => mul3(mix3(dark, back, 0.3), k);
+  const layers = [
+    rayFin(F.caudal, pitch, { fan: [-0.35, 0], r0: 0.035, len: 0.14, rays: 30, col: finDark(0.7), alpha: [0.99, 0.94], edge: 0.5 }),
+    rayFin(F.dorsal1, pitch, { fan: [0.086, 0.025], r0: 0.03, len: 0.075, rays: 44, spiny: true, col: finDark(1.25), alpha: [0.97, 0.86] }),
+    rayFin(F.dorsal2, pitch, { fan: [-0.165, 0.01], r0: 0.04, len: 0.075, rays: 60, col: finDark(0.8), alpha: [0.98, 0.9], edge: 0.6 }),
+    rayFin(F.anal, pitch, { fan: [-0.175, -0.012], r0: 0.04, len: 0.075, rays: 60, col: finDark(0.8), alpha: [0.98, 0.9], edge: 0.6 }),
+    rayFin(F.pelvic, pitch, { fan: [0.122, -0.048], r0: 0.006, len: 0.05, rays: 34, col: () => mix3(silver, dark, 0.3), alpha: [0.96, 0.84] }),
+    { box: body.box, fn: bodyFn },
+  ];
+  const pect = rayFin(F.pect, pitch, { fan: [0.25, -0.016], r0: 0.006, len: 0.09, rays: 40, col: () => mix3(silver, dark, 0.55), alpha: [0.95, 0.78] });
+  return assemble(S, ss, layers, K.rig, { layer: pect, pivot: [0.242, -0.018], flap: [11, 1.6, 0.6] });
+}
+
 // ---------------------------------------------------------------------------- module contract
 const BUILDERS = {
   greatWhite: (id, opts) => buildShark(id, opts, GREAT_WHITE),
   blacktipShark: (id, opts) => buildShark(id, opts, BLACKTIP),
   whitemouthMoray: buildMoray,
+  blackfinBarracuda: buildBarracuda,
 };
 
 /** Only finished, rigged animals are listed (the packer integrates whatever is here). */
